@@ -265,7 +265,6 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 <div class="tabpane" id="tab-home"></div>
 <div class="tabpane" id="tab-inv" style="display:none"></div>
 <div class="tabpane" id="tab-check" style="display:none"></div>
-<div class="tabpane" id="tab-uni" style="display:none"></div>
 <div class="tabpane" id="tab-issues" style="display:none"></div>
 <div class="tabpane" id="tab-manager" style="display:none"></div>
 <div class="subbar" id="subbar" style="display:none"><div class="sb-stats"><div class="sb-stat"><div class="sb-num" id="barCnt">0</div><div class="sb-lb">Counted</div></div><div class="sb-stat"><div class="sb-num r" id="barOrd">0</div><div class="sb-lb">To order</div></div><div class="sb-stat"><div class="sb-num g" id="barStk">0</div><div class="sb-lb">Stocked</div></div></div><button class="sb-go" id="submitBtn" onclick="invSubmit()">Submit & email</button></div>
@@ -306,7 +305,6 @@ var ST={
   checkRole:'Barista',
   checkShift:'AM',
   checkListType:'daily',
-  checkView:'tasks',
   completions:{},      /* periodKey-scoped: taskId -> {name,at} */
   issues:[],           /* supervisor-logged issues for current store */
   mgrStore:null,
@@ -475,7 +473,7 @@ function saveChecklistReport(store,dateKey,sentBy,emailTo){
 }
 
 /* ---------- DASHBOARD aggregation (both stores) ---------- */
-/* Returns: {orders:{Heights:[{name,qty}],SP:...|null}, checklists:[...], uniform:{...}} */
+/* Returns: {orders:{Heights:[{name,qty}],SP:...|null}, shifts:{...}} */
 function buildDashboard(){
   /* refresh tasks first so totals are always accurate */
   return loadTasks().then(function(){return buildDashboardInner();});
@@ -484,7 +482,7 @@ function buildDashboardInner(){
   var stores=['Heights','SP'];
   /* out.orders[store] = list|null
      out.shifts[store][shift] = { roles: { Barista:{...}, Kitchen:{...} } }
-       each role: {checklist:{done,total,who}|null, uniform:{verified,verifier,missing,allGood}|null} */
+       each role: {checklist:{done,total,who}|null} */
   var out={orders:{},shifts:{}};
   stores.forEach(function(s){out.shifts[s]={AM:{roles:{}},PM:{roles:{}}};});
   var jobs=[];
@@ -532,67 +530,9 @@ function buildDashboardInner(){
     );
   });
 
-  /* UNIFORM: per store, slot into out.shifts[store][shift].roles[role].uniform */
-  stores.forEach(function(s){
-    jobs.push(loadUniformChecks(s).then(function(rows){
-      var seen={};
-      rows.forEach(function(r){
-        var key=(r.shift||'?')+'|'+(r.role||'?')+'|'+r.verified_name;
-        if(seen[key])return;seen[key]=1;
-        var missing=[];try{missing=r.items_missing?JSON.parse(r.items_missing):[];}catch(e){}
-        var shift=r.shift||'AM',role=r.role||'Barista';
-        if(!out.shifts[s][shift])out.shifts[s][shift]={roles:{}};
-        if(!out.shifts[s][shift].roles[role])out.shifts[s][shift].roles[role]={};
-        var u={verified:r.verified_name,verifier:r.verifier_name,missing:missing,allGood:missing.length===0};
-        /* a role may have 2 people verified; keep a list */
-        var arr=out.shifts[s][shift].roles[role].uniform||[];
-        arr.push(u);
-        out.shifts[s][shift].roles[role].uniform=arr;
-      });
-    }));
-  });
-
   return Promise.all(jobs).then(function(){return out;});
 }
 
-
-/* ============================================================
-   UNIFORM — peer verification
-   ============================================================ */
-
-/* uniform item list comes from checklist_tasks where section='Uniform' */
-function uniformItems(){
-  return ST.tasks.filter(function(t){return t.list_type==='daily'&&t.section==='Uniform';});
-}
-
-/* load today's uniform checks for a store */
-function loadUniformChecks(store){
-  var dk=periodKey('daily');
-  return sb('uniform_checks?select=*&store=eq.'+encodeURIComponent(store)+'&date_key=eq.'+dk+'&order=checked_at.desc')
-    .then(function(r){return r.json();})
-    .then(function(d){return Array.isArray(d)?d:[];})
-    .catch(function(){return [];});
-}
-
-/* dashboard uniform: per store, list of {verified, verifier, missing[], allGood} for today */
-function buildUniformDash(){
-  var out={};
-  var jobs=['Heights','SP'].map(function(s){
-    return loadUniformChecks(s).then(function(rows){
-      /* keep only the latest check per verified person */
-      var seen={},list=[];
-      rows.forEach(function(r){
-        if(seen[r.verified_name])return;
-        seen[r.verified_name]=1;
-        var missing=[];
-        try{missing=r.items_missing?JSON.parse(r.items_missing):[];}catch(e){missing=[];}
-        list.push({verified:r.verified_name,verifier:r.verifier_name,missing:missing,allGood:!!r.all_good||missing.length===0});
-      });
-      out[s]=list;
-    });
-  });
-  return Promise.all(jobs).then(function(){return out;});
-}
 
 /* ---------- MANAGER checklist summary helpers ---------- */
 function dailyChecklistTasks(store){
@@ -691,14 +631,13 @@ function trySendDailyChecklistSummary(){
 /* ---------- tab switching ---------- */
 function setTab(t){
   ST.tab=t;
-  ['home','inv','check','uni','issues','manager'].forEach(function(x){
+  ['home','inv','check','issues','manager'].forEach(function(x){
     var pane=document.getElementById('tab-'+x); if(pane)pane.style.display=(x===t)?'block':'none';
     var btn=document.getElementById('nav-'+x); if(btn)btn.className='nav-item'+(x===t?' on':'');
   });
   if(t==='home')renderHome(true);
   else if(t==='inv')renderInv();
   else if(t==='check')renderCheck();
-  else if(t==='uni')renderUniform(true);
   else if(t==='issues')renderIssues();
   else if(t==='manager')renderManager();
 }
@@ -824,21 +763,10 @@ function renderDashBody(d){
             else if(c.done>=c.total)ckPill='<span class="pill pill-green">list \u2713</span>';
             else ckPill='<span class="pill pill-amber">list '+c.done+'/'+c.total+'</span>';
           }
-          /* uniform pill(s) */
-          var uniPills='';
-          if(r.uniform && r.uniform.length){
-            r.uniform.forEach(function(u){
-              if(u.allGood)uniPills+='<span class="pill pill-green">uniform \u2713</span>';
-              else uniPills+='<span class="pill pill-red">'+esc(u.missing.join(', '))+'</span>';
-            });
-          } else {
-            uniPills='<span class="pill pill-gray">uniform \u2013</span>';
-          }
-          /* name: prefer checklist who, else uniform verified */
-          var who=(r.checklist&&r.checklist.who) || (r.uniform&&r.uniform[0]&&r.uniform[0].verified) || '';
+          var who=(r.checklist&&r.checklist.who) || '';
           html+='<div class="shift-role">';
           html+='<div class="sr-left"><div class="sr-role">'+esc(role)+(who?' \u00b7 '+esc(who):'')+'</div></div>';
-          html+='<div class="sr-pills">'+ckPill+uniPills+'</div>';
+          html+='<div class="sr-pills">'+ckPill+'</div>';
           html+='</div>';
         });
       }
@@ -987,22 +915,22 @@ function invSt(m,t){var e=document.getElementById('invSt');if(e){e.textContent=m
 /* ============ CHECKLISTS ============ */
 function renderCheck(){
   var c=document.getElementById('tab-check');
+  var isDaily=ST.checkListType==='daily';
   c.innerHTML='<div class="h-title">Checklists</div>'
     +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 '+esc(ST.emp)+'</div>'
-    +'<div class="seg"><button class="seg-btn'+(ST.checkView==='tasks'?' on':'')+'" onclick="ckView(\'tasks\')">Tasks</button>'
-    +'<button class="seg-btn'+(ST.checkView==='uniform'?' on':'')+'" onclick="ckView(\'uniform\')">Uniform</button></div>'
-    +'<div id="ckContent"></div>';
-  if(ST.checkView==='uniform'){renderUniform(true,'ckContent');return;}
-  document.getElementById('ckContent').innerHTML=
-    '<div class="seg seg-4">'
-    +'<button class="seg-btn'+(ST.checkListType==='daily'?' on':'')+'" onclick="ckType(\'daily\')">Daily</button>'
-    +'<button class="seg-btn'+(ST.checkListType==='weekly'?' on':'')+'" onclick="ckType(\'weekly\')">Weekly</button>'
-    +'<button class="seg-btn'+(ST.checkListType==='biweekly'?' on':'')+'" onclick="ckType(\'biweekly\')">Bi-wk</button>'
-    +'<button class="seg-btn'+(ST.checkListType==='monthly'?' on':'')+'" onclick="ckType(\'monthly\')">Monthly</button>'
-    +'</div>'
+    +'<div class="seg"><button class="seg-btn'+(isDaily?' on':'')+'" onclick="ckGroup(\'daily\')">Daily</button>'
+    +'<button class="seg-btn'+(!isDaily?' on':'')+'" onclick="ckGroup(\'deep\')">Deep Clean</button></div>'
+    +'<div id="ckContent">'
+    +(isDaily
+      ? '<div class="muted-row">Everyday opening, freetime, and closing work.</div>'
+      : '<div class="muted-row">Recurring cleaning tasks by schedule.</div><div class="seg seg-3">'
+        +'<button class="seg-btn'+(ST.checkListType==='weekly'?' on':'')+'" onclick="ckType(\'weekly\')">Weekly</button>'
+        +'<button class="seg-btn'+(ST.checkListType==='biweekly'?' on':'')+'" onclick="ckType(\'biweekly\')">Bi-weekly</button>'
+        +'<button class="seg-btn'+(ST.checkListType==='monthly'?' on':'')+'" onclick="ckType(\'monthly\')">Monthly</button>'
+        +'</div>')
     +'<div id="ckRoleBar"></div>'
-    +'<div id="ckList"><div class="loading">Loading\u2026</div></div>';
-  if(ST.checkListType==='daily'){
+    +'<div id="ckList"><div class="loading">Loading\u2026</div></div></div>';
+  if(isDaily){
     document.getElementById('ckRoleBar').innerHTML=
       '<div class="seg"><button class="seg-btn'+(ST.checkRole==='Barista'?' on':'')+'" onclick="ckRole(\'Barista\')">Barista</button>'
       +'<button class="seg-btn'+(ST.checkRole==='Kitchen'?' on':'')+'" onclick="ckRole(\'Kitchen\')">Kitchen</button></div>'
@@ -1012,7 +940,11 @@ function renderCheck(){
   var pk=periodKey(ST.checkListType);
   loadCompletions(ST.store,ST.checkListType,pk).then(function(){ckRenderList();});
 }
-function ckView(v){ST.checkView=v;renderCheck();}
+function ckGroup(g){
+  if(g==='daily')ST.checkListType='daily';
+  else if(ST.checkListType==='daily')ST.checkListType='weekly';
+  renderCheck();
+}
 function ckType(t){ST.checkListType=t;renderCheck();}
 function ckRole(r){ST.checkRole=r;renderCheck();}
 function ckShift(s){ST.checkShift=s;renderCheck();}
@@ -1022,7 +954,7 @@ function ckTasksFor(){
     if(!taskVisibleForStore(t,ST.store))return false;
     if(t.list_type!==ST.checkListType)return false;
     if(ST.checkListType==='daily'){
-      if(t.section==='Uniform')return false; /* uniform is now its own tab */
+      if(t.section==='Uniform')return false;
       if(t.role && t.role!==ST.checkRole)return false;
       if(t.shift && t.shift!==ST.checkShift)return false;
       return true;
@@ -1032,7 +964,7 @@ function ckTasksFor(){
 }
 function ckRenderList(){
   var tasks=ckTasksFor();
-  var bySec={},order=['Uniform','Opening','Freetime','Closing','Deep Clean'];
+  var bySec={},order=['Opening','Freetime','Closing','Deep Clean'];
   tasks.forEach(function(t){(bySec[t.section]=bySec[t.section]||[]).push(t);});
   var done=0;tasks.forEach(function(t){if(ST.completions[t.id])done++;});
   var html='<div class="prog"><div class="prog-row"><span>'+done+' of '+tasks.length+' done</span><span>'+(tasks.length?Math.round(done/tasks.length*100):0)+'%</span></div>'
@@ -1196,7 +1128,6 @@ function submitPin(){
   if(v===ST.pin){ST.editUnlocked=true;closePin();
     if(ST._pinCtx==='inv')invRenderList();
     else if(ST._pinCtx==='check')ckRenderList();
-    else if(ST._pinCtx==='uni')renderUniform(true,UNI.targetId||'ckContent');
     else if(ST._pinCtx==='issues')renderIssues();
     else if(ST._pinCtx==='manager')renderManager();
   } else {document.getElementById('pinMsg').textContent='Incorrect PIN.';document.getElementById('pinInput').value='';}
@@ -1240,7 +1171,7 @@ function editTask(id){
   var t=id?ST.tasks.filter(function(x){return x.id===id;})[0]:null;
   var isDaily=ST.checkListType==='daily';
   document.getElementById('editTitle').textContent=id?'Edit task':'Add task';
-  var secs=isDaily?['Uniform','Opening','Freetime','Closing']:['Deep Clean'];
+  var secs=isDaily?['Opening','Freetime','Closing']:['Deep Clean'];
   var body='<label>Task</label><input id="eTask" value="'+escA(t?t.task:'')+'">';
   if(isDaily){
     body+='<div class="ef-row"><div><label>Role</label><select id="eRole"><option'+(t&&t.role==='Barista'?' selected':'')+'>Barista</option><option'+(t&&t.role==='Kitchen'?' selected':'')+'>Kitchen</option></select></div>'
@@ -1260,7 +1191,6 @@ function saveTask(){
     body.section=document.getElementById('eSec').value;
     body.role=document.getElementById('eRole').value;
     body.shift=document.getElementById('eShift').value;
-    if(body.section==='Uniform'){body.role=null;body.shift=null;}
     if(body.section==='Freetime'){body.shift=null;}
   }else{body.role=null;body.shift=null;body.section='Deep Clean';}
   var url,method;
@@ -1275,32 +1205,6 @@ function delTask(id){
     .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){var pk=periodKey(ST.checkListType);loadCompletions(ST.store,ST.checkListType,pk).then(ckRenderList);});}});
 }
 function closeEdit(){document.getElementById('editModal').style.display='none';}
-
-/* ============ UNIFORM ITEM EDIT (items live in checklist_tasks, section='Uniform') ============ */
-function editUniItem(id){
-  ST._editUniId=id;
-  var t=id?uniformItems().filter(function(x){return x.id===id;})[0]:null;
-  document.getElementById('editTitle').textContent=id?'Edit uniform item':'Add uniform item';
-  document.getElementById('editBody').innerHTML='<label>Uniform item</label><input id="eUni" value="'+escA(t?t.task:'')+'">';
-  document.getElementById('editSave').setAttribute('onclick','saveUniItem()');
-  document.getElementById('editDelete').style.display=id?'block':'none';
-  document.getElementById('editDelete').setAttribute('onclick','delUniItem('+id+')');
-  document.getElementById('editModal').style.display='flex';
-}
-function saveUniItem(){
-  var text=(document.getElementById('eUni').value||'').trim();if(!text){alert('Item name required');return;}
-  var body={task:text,list_type:'daily',section:'Uniform',role:null,shift:null};
-  var url,method;
-  if(ST._editUniId){url='checklist_tasks?id=eq.'+ST._editUniId;method='PATCH';}
-  else{url='checklist_tasks';method='POST';body.sort_order=999;body.active=true;}
-  sb(url,{method:method,headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify(body)})
-    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true,UNI.targetId||'ckContent');});}else r.text().then(function(t){alert('Save failed: '+t);});});
-}
-function delUniItem(id){
-  if(!confirm('Remove this uniform item?'))return;
-  sb('checklist_tasks?id=eq.'+id,{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify({active:false})})
-    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true,UNI.targetId||'ckContent');});}});
-}
 
 /* ============ BOOT ============ */
 function boot(){
@@ -1326,168 +1230,9 @@ function boot(){
 
 
 /* ============================================================
-   UNIFORM TAB — peer verification
-   ============================================================ */
-var UNI={verifying:null,marks:{},shift:null,role:null};
-
-function renderUniform(firstLoad,targetId){
-  targetId=targetId||'tab-uni';
-  UNI.targetId=targetId;
-  var c=document.getElementById(targetId);
-  if(firstLoad || !document.getElementById('uniBody')){
-    c.innerHTML='<div class="h-title">Uniform check</div>'
-      +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 verify a coworker</div>'
-      +'<div id="uniBody"><div class="loading">Loading\u2026</div></div>';
-    UNI.verifying=null;UNI.marks={};UNI.shift=null;UNI.role=null;
-  }
-  loadTasks().then(function(){return loadUniformChecks(ST.store);}).then(function(rows){
-    UNI._rows=rows;
-    renderUniformBody();
-  });
-}
-
-function renderUniformBody(){
-  var items=uniformItems();
-  var rows=UNI._rows||[];
-  var html='';
-
-  /* --- verification form --- */
-  html+='<div class="card">';
-  html+='<div class="card-hd"><span class="card-title">Verify a coworker\u2019s uniform</span></div>';
-  var sel='<select class="id-select" id="uniWho" onchange="uniPick(this.value)" style="margin-bottom:4px"><option value="">Select coworker\u2026</option>';
-  ST.employees.forEach(function(n){
-    if(n===ST.emp)return;
-    sel+='<option value="'+escA(n)+'"'+(UNI.verifying===n?' selected':'')+'>'+esc(n)+'</option>';
-  });
-  sel+='</select>';
-  html+=sel;
-
-  if(UNI.verifying){
-    /* shift + role of the person being verified */
-    html+='<div class="uni-sr-pick">';
-    html+='<div class="uni-sr-group"><div class="uni-sr-label">Shift</div><div class="seg" style="margin-bottom:0">'
-      +'<button class="seg-btn'+(UNI.shift==='AM'?' on':'')+'" onclick="uniSetShift(\'AM\')">AM</button>'
-      +'<button class="seg-btn'+(UNI.shift==='PM'?' on':'')+'" onclick="uniSetShift(\'PM\')">PM</button></div></div>';
-    html+='<div class="uni-sr-group"><div class="uni-sr-label">Role</div><div class="seg" style="margin-bottom:0">'
-      +'<button class="seg-btn'+(UNI.role==='Barista'?' on':'')+'" onclick="uniSetRole(\'Barista\')">Barista</button>'
-      +'<button class="seg-btn'+(UNI.role==='Kitchen'?' on':'')+'" onclick="uniSetRole(\'Kitchen\')">Kitchen</button></div></div>';
-    html+='</div>';
-
-    var nItems=items.length;
-    var nMarked=items.filter(function(it){return UNI.marks[it.task];}).length;
-    html+='<div class="uni-instruct">For each item, tap <b>Worn</b> or <b>Missing</b> for '+esc(UNI.verifying)+'.</div>';
-    html+='<div id="uniItems">';
-    items.forEach(function(it){
-      var mk=UNI.marks[it.task]||'';
-      html+='<div class="uni-row2">';
-      html+='<span class="uni-item-name">'+esc(it.task)+'</span>';
-      html+='<div class="uni-choices">';
-      html+='<button class="uni-choice worn'+(mk==='worn'?' on':'')+'" onclick="uniMark(\''+escA(it.task)+'\',\'worn\')">Worn</button>';
-      html+='<button class="uni-choice miss'+(mk==='missing'?' on':'')+'" onclick="uniMark(\''+escA(it.task)+'\',\'missing\')">Missing</button>';
-      html+='</div></div>';
-    });
-    html+='</div>';
-    var allMarked=(nMarked===nItems);
-    var nMiss=items.filter(function(it){return UNI.marks[it.task]==='missing';}).length;
-    var btnLabel = !allMarked ? 'Mark all items ('+nMarked+'/'+nItems+')'
-      : (nMiss>0 ? 'Submit \u2014 '+nMiss+' missing' : 'Submit \u2014 all worn');
-    var ready=allMarked && UNI.shift && UNI.role;
-    if(allMarked && (!UNI.shift || !UNI.role))btnLabel='Pick shift &amp; role first';
-    html+='<button class="id-go'+(ready?'':' disabled')+'" style="margin-top:14px" onclick="uniSubmit()">'+btnLabel+'</button>';
-    html+='<div class="status" id="uniSt"></div>';
-  }
-  html+='</div>';
-
-  /* --- today's status --- */
-  html+='<div class="card"><div class="card-hd"><span class="card-title">Verified today \u00b7 '+esc(storeName(ST.store))+'</span></div>';
-  var seen={},list=[];
-  rows.forEach(function(r){if(seen[r.verified_name])return;seen[r.verified_name]=1;list.push(r);});
-  if(list.length===0){
-    html+='<div class="muted-row">No one verified yet today.</div>';
-  } else {
-    list.forEach(function(r){
-      var missing=[];try{missing=r.items_missing?JSON.parse(r.items_missing):[];}catch(e){}
-      var ok=missing.length===0;
-      var sr=[r.shift,r.role].filter(Boolean).join(' \u00b7 ');
-      html+='<div class="uni-status-row">';
-      html+='<div><div class="uni-sr-name">'+esc(r.verified_name)+(sr?' \u00b7 '+esc(sr):'')+'</div><div class="uni-sr-by">verified by '+esc(r.verifier_name)+'</div></div>';
-      if(ok)html+='<span class="pill pill-green">all good</span>';
-      else html+='<span class="pill pill-red">missing: '+esc(missing.join(', '))+'</span>';
-      html+='</div>';
-    });
-  }
-  html+='</div>';
-
-  /* --- edit uniform item list (PIN-gated, same pattern as inventory/checklists) --- */
-  html+='<div class="card"><div class="card-hd"><span class="card-title">Uniform items</span></div>';
-  items.forEach(function(it){
-    html+='<div class="ck-row"><span>'+esc(it.task)+'</span>';
-    if(ST.editUnlocked)html+='<button class="row-edit" onclick="editUniItem('+it.id+')">\u270e</button>';
-    html+='</div>';
-  });
-  if(ST.editUnlocked)html+='<button class="add-btn" onclick="editUniItem(null)">+ Add uniform item</button>';
-  else html+='<button class="add-btn ghost" onclick="askPin(\'uni\')">\uD83D\uDD12 Unlock to edit / add items</button>';
-  html+='</div>';
-
-  var body=document.getElementById('uniBody');
-  if(body)body.innerHTML=html;
-}
-
-function uniPick(name){UNI.verifying=name||null;UNI.marks={};UNI.shift=null;UNI.role=null;renderUniformBody();}
-function uniSetShift(s){UNI.shift=s;renderUniformBody();}
-function uniSetRole(r){UNI.role=r;renderUniformBody();}
-function uniMark(item,val){
-  UNI.marks[item]=(UNI.marks[item]===val?'':val);
-  renderUniformBody(); /* uses cached UNI._rows, no DB reload \u2014 marks persist */
-}
-
-function uniSubmit(){
-  if(!UNI.verifying){return;}
-  if(!UNI.shift || !UNI.role){uniStMsg('Pick the shift and role first.','err');return;}
-  var items=uniformItems();
-  var worn=[],missing=[],unmarked=[];
-  items.forEach(function(it){
-    var m=UNI.marks[it.task];
-    if(m==='worn')worn.push(it.task);
-    else if(m==='missing')missing.push(it.task);
-    else unmarked.push(it.task);
-  });
-  if(unmarked.length>0){uniStMsg('Please mark every item (Worn or Missing) before submitting.','err');return;}
-  var allGood=(missing.length===0);
-  var dk=periodKey('daily');
-  var verifying=UNI.verifying;
-  var row={store:ST.store,shift:UNI.shift,role:UNI.role,date_key:dk,verified_name:verifying,verifier_name:ST.emp,
-    items_worn:JSON.stringify(worn),items_missing:JSON.stringify(missing),all_good:allGood};
-
-  var btn=document.querySelector('#uniBody .id-go');if(btn){btn.disabled=true;btn.textContent='Submitting\u2026';}
-  uniStMsg('Saving\u2026','info');
-
-  sb('uniform_checks?store=eq.'+encodeURIComponent(ST.store)+'&date_key=eq.'+dk+'&verified_name=eq.'+encodeURIComponent(verifying),
-    {method:'DELETE',headers:hdr({'Prefer':'return=minimal'})})
-    .then(function(){return sb('uniform_checks',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify([row])});})
-    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
-    .then(function(){
-      if(missing.length>0){
-        try{emailjs.init({publicKey:EMAILJS_PUBLIC});}catch(e){}
-        var date=(new Date()).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-        var msg='UNIFORM ISSUE\n\nStore: '+ST.store+'\nDate: '+date+'\n\n'+verifying+' is MISSING:\n  - '+missing.join('\n  - ')+'\n\nVerified by: '+ST.emp+'\n\nSent via Feng Cha Ops App';
-        return emailjs.send(EMAILJS_SVC,EMAILJS_TPL,{to_email:OWNER_EMAIL,subject:'[Feng Cha '+ST.store+'] Uniform issue - '+verifying,name:ST.store+' Store',email:OWNER_EMAIL,time:date,message:msg});
-      }
-    })
-    .then(function(){
-      uniStMsg(missing.length>0?'Submitted. Owner emailed about missing items.':'Submitted \u2014 all good!','ok');
-      UNI.verifying=null;UNI.marks={};UNI.shift=null;UNI.role=null;
-      setTimeout(function(){renderUniform(true,UNI.targetId||'ckContent');},1200);
-    })
-    .catch(function(err){uniStMsg('Failed: '+(err.text||err.message||err),'err');if(btn){btn.disabled=false;btn.textContent='Submit uniform check';}});
-}
-function uniStMsg(m,t){var e=document.getElementById('uniSt');if(e){e.textContent=m;e.className='status '+t;}}
-
-
-/* ============================================================
    ISSUES — supervisor issue log (PIN-gated: log + review)
    ============================================================ */
-var ISS_CATS=['Uniform','Food Prep','Cleanliness','Checklist','Customer Service','Other'];
+var ISS_CATS=['Food Prep','Cleanliness','Checklist','Customer Service','Other'];
 var ISS={shift:'AM'};
 
 function loadIssues(store){
