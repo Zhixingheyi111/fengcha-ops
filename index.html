@@ -129,6 +129,8 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .sb-lb{font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:1px}
 .sb-go{padding:11px 18px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
 .sb-go:disabled{opacity:.5}
+.sheet-link{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--blue-bg);color:var(--blue);border:1px solid #B9D7F0;border-radius:10px;padding:11px 13px;margin-bottom:12px;text-decoration:none;font-size:13px;font-weight:600}
+.sheet-link span{font-size:11px;font-weight:500;color:var(--muted)}
 /* modals */
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center;padding:24px}
 .modal-box{background:var(--surface);border-radius:16px;padding:22px;max-width:380px;width:100%}
@@ -302,6 +304,8 @@ var EMAILJS_PUBLIC='o4QceItw_cy9DQgQ5';
 var EMAILJS_SVC='service_p893qdk';
 var EMAILJS_TPL='template_aplgvah';      /* Heights/SP template */
 var OWNER_EMAIL='fengchaspringbranch@gmail.com';
+var BIW_SHEET_URL='https://docs.google.com/spreadsheets/d/10WrpioWY-fvcV-B95xFP8fp9HGGeUgP49TX4HTuJKpc/edit?gid=0#gid=0';
+var BIW_SHEET_WEBHOOK_URL=''; /* Paste deployed Google Apps Script web app URL here. */
 
 /* ---- app state ---- */
 var ST={
@@ -310,6 +314,7 @@ var ST={
   tab:'home',          /* home | inv | check | more */
   editUnlocked:false,  /* PIN unlocked this session */
   pin:'7620',          /* loaded from app_settings */
+  biwSheetWebhookUrl:'',
   /* data caches */
   employees:[],
   invItems:{daily:[],biw:[]},
@@ -427,9 +432,15 @@ function taskVisibleForStore(t,store){
   return !t.store || t.store===store;
 }
 
-function loadPin(){
-  return sb('app_settings?select=*&key=eq.edit_pin').then(function(r){return r.json();})
-    .then(function(d){if(Array.isArray(d)&&d.length&&d[0].value)ST.pin=String(d[0].value);}).catch(function(){});
+function loadSettings(){
+  return sb('app_settings?select=*&key=in.(edit_pin,biw_sheet_webhook_url)').then(function(r){return r.json();})
+    .then(function(d){
+      if(!Array.isArray(d))return;
+      d.forEach(function(row){
+        if(row.key==='edit_pin'&&row.value)ST.pin=String(row.value);
+        if(row.key==='biw_sheet_webhook_url'&&row.value)ST.biwSheetWebhookUrl=String(row.value);
+      });
+    }).catch(function(){});
 }
 
 /* last submitted inventory count per store+mode (for "last" column + dashboard order) */
@@ -863,6 +874,7 @@ function renderInv(){
     +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 '+esc(ST.emp)+'</div>'
     +'<div class="seg"><button class="seg-btn'+(ST.invMode==='daily'?' on':'')+'" onclick="invMode(\'daily\')">Daily</button>'
     +'<button class="seg-btn'+(ST.invMode==='biw'?' on':'')+'" onclick="invMode(\'biw\')">Bi-weekly</button></div>'
+    +(ST.invMode==='biw'?'<a class="sheet-link" href="'+escA(BIW_SHEET_URL)+'" target="_blank" rel="noopener">Open bi-weekly Google Sheet <span>Counts sync to C/D</span></a>':'')
     +'<div class="inv-head"><span>Item</span><span class="ih-c">Last</span><span class="ih-c">Now</span><span class="ih-c">Min</span></div>'
     +'<div id="invList"></div>'
     +'<div class="status" id="invSt"></div>';
@@ -960,6 +972,22 @@ function invEmailBody(){
   msg+=BAR+N+'Sent via Feng Cha Ops App'+N;
   return msg;
 }
+function biwSheetRows(){
+  return invItems().filter(function(it){return invGV(it)!=='';}).map(function(it){
+    return {item_name:it.name,count:parseFloat(invGV(it)),category:it.cat||'',unit:it.unit||'',source:it.src||''};
+  });
+}
+function syncBiweeklySheet(){
+  if(ST.invMode!=='biw')return Promise.resolve({skipped:true});
+  var hook=ST.biwSheetWebhookUrl||BIW_SHEET_WEBHOOK_URL;
+  if(!hook)return Promise.resolve({skipped:true,reason:'not_configured'});
+  return fetch(hook,{
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({store:ST.store,date_key:periodKey('biweekly'),employee_name:ST.emp,rows:biwSheetRows()})
+  }).then(function(){return {ok:true};});
+}
 function invSubmit(){
   try{emailjs.init({publicKey:EMAILJS_PUBLIC});}catch(e){}
   var items=invItems(),pk=periodKey(ST.invMode==='daily'?'daily':'biweekly'),rows=[];
@@ -971,7 +999,12 @@ function invSubmit(){
   sb('inventory_counts',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify(rows)})
     .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
     .then(function(){return emailjs.send(EMAILJS_SVC,EMAILJS_TPL,{to_email:OWNER_EMAIL,subject:'[Feng Cha '+ST.store+' '+(ST.invMode==='daily'?'DAILY':'BI-WEEKLY')+'] Inventory - '+date,name:ST.store+' Store',email:OWNER_EMAIL,time:date,message:body});})
-    .then(function(){invSt('Sent! Order report emailed and counts saved.','ok');btn.textContent='Sent \u2713';ST.invCounts={};loadInvLast(ST.store).then(invRenderList);})
+    .then(function(){return syncBiweeklySheet();})
+    .then(function(sheet){
+      var msg='Sent! Order report emailed and counts saved.';
+      if(ST.invMode==='biw')msg+=sheet&&sheet.reason==='not_configured'?' Google Sheet link is ready; sheet sync needs webhook setup.':' Google Sheet sync started.';
+      invSt(msg,'ok');btn.textContent='Sent \u2713';ST.invCounts={};loadInvLast(ST.store).then(invRenderList);
+    })
     .catch(function(err){invSt('Failed: '+(err.text||err.message||err),'err');btn.disabled=false;btn.textContent='Submit & email';});
 }
 function invSt(m,t){var e=document.getElementById('invSt');if(e){e.textContent=m;e.className='status '+t;}}
@@ -1279,7 +1312,7 @@ function closeEdit(){document.getElementById('editModal').style.display='none';}
 /* ============ BOOT ============ */
 function boot(){
   loadMe();
-  Promise.all([loadEmployees(),loadInvItems(),loadTasks(),loadPin()]).then(function(){
+  Promise.all([loadEmployees(),loadInvItems(),loadTasks(),loadSettings()]).then(function(){
     if(ST.emp){
       /* name remembered -> just ask which store today */
       enterStorePick();
