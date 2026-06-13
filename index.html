@@ -206,6 +206,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .action-card.amber .action-top{color:var(--amber-tx)}
 .action-card.green .action-top{color:var(--green-tx)}
 .action-lb{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.25}
+.home-store-seg{margin-top:12px;margin-bottom:14px}
 .store-snapshot{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 0;border-top:1px solid var(--border)}
 .store-snapshot:first-of-type{border-top:none}
 .snap-name{font-size:13px;font-weight:600}
@@ -744,7 +745,7 @@ function renderHome(firstLoad){
      leave the screen as-is and silently swap the dashboard body when ready. */
   if(firstLoad || !document.getElementById('dashBody')){
     c.innerHTML='<div class="h-title">Today at a glance</div>'
-      +'<div class="h-sub">'+fd()+' \u00b7 both stores</div>'
+      +'<div class="h-sub">'+fd()+' \u00b7 switch store anytime</div>'
       +'<div id="dashBody"><div class="loading">Loading dashboard\u2026</div></div>';
   }
   buildDashboard().then(function(d){
@@ -755,15 +756,15 @@ function renderHome(firstLoad){
   });
 }
 function renderDashBody(d){
-  var html='',primary=ST.store||'Heights',other=primary==='Heights'?'SP':'Heights';
+  var html='',primary=ST.store||'Heights';
   DASH_ORDERS=d.orders;
 
+  html+=homeStoreSeg(primary);
   html+='<div class="dash-sec-lbl">Needs attention</div>';
   html+='<div class="action-grid">';
   html+=dashOrderAction(primary,d.orders[primary]);
   html+=dashChecklistAction(primary,d);
   html+=dashDeepAction(primary,d.deep[primary]);
-  html+=dashOtherAction(other,d);
   html+='</div><div id="dashOrderDetail"></div>';
 
   html+='<div class="dash-sec-lbl">'+esc(storeName(primary))+' today</div>';
@@ -775,13 +776,13 @@ function renderDashBody(d){
   html+='<div class="dash-sec-lbl">Deep clean</div>';
   html+='<div class="card" style="padding:4px 12px">'+dashDeepRows(primary,d.deep[primary])+'</div>';
 
-  html+='<div class="dash-sec-lbl">Other store</div>';
-  html+='<div class="card" style="padding:4px 12px">'+dashStoreSnapshot(other,d)+'</div>';
-
   var body=document.getElementById('dashBody');
   if(body)body.innerHTML=html;
 }
 var DASH_ORDERS={};
+function homeStoreSeg(store){
+  return '<div class="seg home-store-seg"><button class="seg-btn'+(store==='Heights'?' on':'')+'" onclick="homeStore(\'Heights\')">Heights</button><button class="seg-btn'+(store==='SP'?' on':'')+'" onclick="homeStore(\'SP\')">Spring Branch</button></div>';
+}
 function dashOrderAction(store,ord){
   if(ord===null)return '<div class="action-card gray" onclick="setTab(\'inv\')"><div class="action-top">No count</div><div class="action-lb">'+esc(storeName(store))+' inventory</div></div>';
   if(ord.length===0)return '<div class="action-card green" onclick="setTab(\'inv\')"><div class="action-top">Stocked</div><div class="action-lb">'+esc(storeName(store))+' inventory</div></div>';
@@ -810,11 +811,6 @@ function dashDeepAction(store,deep){
   if(!pick)return '<div class="action-card green" onclick="homeGoChecklist(\'weekly\')"><div class="action-top">Clean done</div><div class="action-lb">Recurring deep clean</div></div>';
   return '<div class="action-card amber" onclick="homeGoChecklist(\''+pick.type+'\')"><div class="action-top">'+pick.done+'/'+pick.total+'</div><div class="action-lb">'+pick.label+' deep clean</div></div>';
 }
-function dashOtherAction(store,d){
-  var open=dashOpenCount(store,d),ord=d.orders[store],n=(ord&&ord.length)||0;
-  var cls=(open||n)?'amber':'green',top=(open||n)?(open+n):'OK';
-  return '<div class="action-card '+cls+'" onclick="dashSwitchStore(\''+store+'\')"><div class="action-top">'+top+'</div><div class="action-lb">'+esc(storeName(store))+' attention</div></div>';
-}
 function dashShiftRows(store,shift,block){
   var roles=block?block.roles:{},h='<div class="store-snapshot"><div><div class="snap-name">'+shift+' '+(shift==='AM'?'Opening':'Closing')+'</div><div class="snap-meta">'+esc(storeName(store))+'</div></div><div class="sr-pills">';
   ['Barista','Kitchen'].forEach(function(role){
@@ -833,17 +829,8 @@ function dashDeepRows(store,deep){
   });
   return h;
 }
-function dashStoreSnapshot(store,d){
-  var ord=d.orders[store],open=dashOpenCount(store,d),deep=dashDeepOpen(store,d.deep[store]);
-  var invTxt=ord===null?'no count':(ord.length?ord.length+' order':'stocked');
-  return '<div class="store-snapshot"><div><div class="snap-name">'+esc(storeName(store))+'</div><div class="snap-meta">Inventory '+esc(invTxt)+' · Daily '+open+' open · Deep '+deep+' open</div></div><button class="iss-act" onclick="dashSwitchStore(\''+store+'\')">View</button></div>';
-}
 function dashOpenCount(store,d){
   var n=0;['AM','PM'].forEach(function(shift){['Barista','Kitchen'].forEach(function(role){var r=d.shifts[store][shift].roles[role],c=r&&r.checklist;if(c&&c.total>c.done)n+=c.total-c.done;});});
-  return n;
-}
-function dashDeepOpen(store,deep){
-  var n=0;['weekly','biweekly','monthly'].forEach(function(type){var x=deep&&deep[type];if(x&&x.total>x.done)n+=x.total-x.done;});
   return n;
 }
 function homeGoChecklist(type,shift,role){
@@ -852,7 +839,7 @@ function homeGoChecklist(type,shift,role){
   if(role)ST.checkRole=role;
   setTab('check');
 }
-function dashSwitchStore(store){
+function homeStore(store){
   ST.store=store;rememberMe();renderTopbar();renderHome(true);
 }
 function dashOrderDetail(store){
