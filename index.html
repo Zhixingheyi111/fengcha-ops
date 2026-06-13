@@ -269,7 +269,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 <div class="tabpane" id="tab-issues" style="display:none"></div>
 <div class="tabpane" id="tab-manager" style="display:none"></div>
 <div class="subbar" id="subbar" style="display:none"><div class="sb-stats"><div class="sb-stat"><div class="sb-num" id="barCnt">0</div><div class="sb-lb">Counted</div></div><div class="sb-stat"><div class="sb-num r" id="barOrd">0</div><div class="sb-lb">To order</div></div><div class="sb-stat"><div class="sb-num g" id="barStk">0</div><div class="sb-lb">Stocked</div></div></div><button class="sb-go" id="submitBtn" onclick="invSubmit()">Submit & email</button></div>
-<div class="botnav"><button class="nav-item on" id="nav-home" onclick="setTab('home')"><span class="nav-ic">⌂</span><span class="nav-lb">Home</span></button><button class="nav-item" id="nav-inv" onclick="setTab('inv')"><span class="nav-ic">▤</span><span class="nav-lb">Inventory</span></button><button class="nav-item" id="nav-check" onclick="setTab('check')"><span class="nav-ic">☑</span><span class="nav-lb">Lists</span></button><button class="nav-item" id="nav-uni" onclick="setTab('uni')"><span class="nav-ic">&#128085;</span><span class="nav-lb">Uniform</span></button><button class="nav-item" id="nav-issues" onclick="setTab('issues')"><span class="nav-ic">&#9873;</span><span class="nav-lb">Issues</span></button><button class="nav-item" id="nav-manager" onclick="setTab('manager')"><span class="nav-ic">&#128197;</span><span class="nav-lb">Manager</span></button></div>
+<div class="botnav"><button class="nav-item on" id="nav-home" onclick="setTab('home')"><span class="nav-ic">⌂</span><span class="nav-lb">Home</span></button><button class="nav-item" id="nav-inv" onclick="setTab('inv')"><span class="nav-ic">▤</span><span class="nav-lb">Inventory</span></button><button class="nav-item" id="nav-check" onclick="setTab('check')"><span class="nav-ic">☑</span><span class="nav-lb">Checklists</span></button><button class="nav-item" id="nav-manager" onclick="setTab('manager')"><span class="nav-ic">&#128197;</span><span class="nav-lb">Manager</span></button></div>
 </div>
 <div class="modal" id="pinModal"><div class="modal-box"><div class="modal-title">Enter edit PIN</div><input class="pin-input" id="pinInput" type="tel" inputmode="numeric" maxlength="4" placeholder="••••"><div class="pin-msg" id="pinMsg"></div><div class="modal-btns"><button class="m-cancel" onclick="closePin()">Cancel</button><button class="m-save" onclick="submitPin()">Unlock</button></div></div></div>
 <div class="modal" id="editModal"><div class="modal-box"><div class="modal-title" id="editTitle"></div><div id="editBody"></div><div class="modal-btns"><button class="m-cancel" onclick="closeEdit()">Cancel</button><button class="m-save" id="editSave">Save</button></div><button class="m-del" id="editDelete" style="display:none">Remove</button></div></div>
@@ -306,6 +306,7 @@ var ST={
   checkRole:'Barista',
   checkShift:'AM',
   checkListType:'daily',
+  checkView:'tasks',
   completions:{},      /* periodKey-scoped: taskId -> {name,at} */
   issues:[],           /* supervisor-logged issues for current store */
   mgrStore:null,
@@ -988,7 +989,12 @@ function renderCheck(){
   var c=document.getElementById('tab-check');
   c.innerHTML='<div class="h-title">Checklists</div>'
     +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 '+esc(ST.emp)+'</div>'
-    +'<div class="seg seg-4">'
+    +'<div class="seg"><button class="seg-btn'+(ST.checkView==='tasks'?' on':'')+'" onclick="ckView(\'tasks\')">Tasks</button>'
+    +'<button class="seg-btn'+(ST.checkView==='uniform'?' on':'')+'" onclick="ckView(\'uniform\')">Uniform</button></div>'
+    +'<div id="ckContent"></div>';
+  if(ST.checkView==='uniform'){renderUniform(true,'ckContent');return;}
+  document.getElementById('ckContent').innerHTML=
+    '<div class="seg seg-4">'
     +'<button class="seg-btn'+(ST.checkListType==='daily'?' on':'')+'" onclick="ckType(\'daily\')">Daily</button>'
     +'<button class="seg-btn'+(ST.checkListType==='weekly'?' on':'')+'" onclick="ckType(\'weekly\')">Weekly</button>'
     +'<button class="seg-btn'+(ST.checkListType==='biweekly'?' on':'')+'" onclick="ckType(\'biweekly\')">Bi-wk</button>'
@@ -1006,6 +1012,7 @@ function renderCheck(){
   var pk=periodKey(ST.checkListType);
   loadCompletions(ST.store,ST.checkListType,pk).then(function(){ckRenderList();});
 }
+function ckView(v){ST.checkView=v;renderCheck();}
 function ckType(t){ST.checkListType=t;renderCheck();}
 function ckRole(r){ST.checkRole=r;renderCheck();}
 function ckShift(s){ST.checkShift=s;renderCheck();}
@@ -1189,7 +1196,7 @@ function submitPin(){
   if(v===ST.pin){ST.editUnlocked=true;closePin();
     if(ST._pinCtx==='inv')invRenderList();
     else if(ST._pinCtx==='check')ckRenderList();
-    else if(ST._pinCtx==='uni')renderUniform(true);
+    else if(ST._pinCtx==='uni')renderUniform(true,UNI.targetId||'ckContent');
     else if(ST._pinCtx==='issues')renderIssues();
     else if(ST._pinCtx==='manager')renderManager();
   } else {document.getElementById('pinMsg').textContent='Incorrect PIN.';document.getElementById('pinInput').value='';}
@@ -1287,12 +1294,12 @@ function saveUniItem(){
   if(ST._editUniId){url='checklist_tasks?id=eq.'+ST._editUniId;method='PATCH';}
   else{url='checklist_tasks';method='POST';body.sort_order=999;body.active=true;}
   sb(url,{method:method,headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify(body)})
-    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true);});}else r.text().then(function(t){alert('Save failed: '+t);});});
+    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true,UNI.targetId||'ckContent');});}else r.text().then(function(t){alert('Save failed: '+t);});});
 }
 function delUniItem(id){
   if(!confirm('Remove this uniform item?'))return;
   sb('checklist_tasks?id=eq.'+id,{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify({active:false})})
-    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true);});}});
+    .then(function(r){if(r.ok){closeEdit();loadTasks().then(function(){renderUniform(true,UNI.targetId||'ckContent');});}});
 }
 
 /* ============ BOOT ============ */
@@ -1323,8 +1330,10 @@ function boot(){
    ============================================================ */
 var UNI={verifying:null,marks:{},shift:null,role:null};
 
-function renderUniform(firstLoad){
-  var c=document.getElementById('tab-uni');
+function renderUniform(firstLoad,targetId){
+  targetId=targetId||'tab-uni';
+  UNI.targetId=targetId;
+  var c=document.getElementById(targetId);
   if(firstLoad || !document.getElementById('uniBody')){
     c.innerHTML='<div class="h-title">Uniform check</div>'
       +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 verify a coworker</div>'
@@ -1468,7 +1477,7 @@ function uniSubmit(){
     .then(function(){
       uniStMsg(missing.length>0?'Submitted. Owner emailed about missing items.':'Submitted \u2014 all good!','ok');
       UNI.verifying=null;UNI.marks={};UNI.shift=null;UNI.role=null;
-      setTimeout(function(){renderUniform(true);},1200);
+      setTimeout(function(){renderUniform(true,UNI.targetId||'ckContent');},1200);
     })
     .catch(function(err){uniStMsg('Failed: '+(err.text||err.message||err),'err');if(btn){btn.disabled=false;btn.textContent='Submit uniform check';}});
 }
