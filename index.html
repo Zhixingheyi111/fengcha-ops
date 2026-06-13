@@ -367,6 +367,9 @@ function loadTasks(){
   return sb('checklist_tasks?select=*&active=eq.true&order=sort_order').then(function(r){return r.json();})
     .then(function(d){ST.tasks=Array.isArray(d)?d:[];});
 }
+function taskVisibleForStore(t,store){
+  return !t.store || t.store===store;
+}
 
 function loadPin(){
   return sb('app_settings?select=*&key=eq.edit_pin').then(function(r){return r.json();})
@@ -445,6 +448,7 @@ function buildDashboardInner(){
         shifts.forEach(function(shift){
           roles.forEach(function(role){
             var ts=ST.tasks.filter(function(t){
+              if(!taskVisibleForStore(t,s))return false;
               return t.list_type==='daily' && t.role===role && t.shift===shift
                 && (t.section==='Opening'||t.section==='Closing');
             });
@@ -850,6 +854,7 @@ function ckShift(s){ST.checkShift=s;renderCheck();}
 
 function ckTasksFor(){
   return ST.tasks.filter(function(t){
+    if(!taskVisibleForStore(t,ST.store))return false;
     if(t.list_type!==ST.checkListType)return false;
     if(ST.checkListType==='daily'){
       if(t.section==='Uniform')return false; /* uniform is now its own tab */
