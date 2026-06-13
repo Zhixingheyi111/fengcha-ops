@@ -887,6 +887,10 @@ function invLow(it){var v=invGV(it);return v!==''&&parseFloat(v)<it.min;}
 function invOQ(it){var v=invGV(it);return v!==''?Math.max(0,it.min-parseFloat(v)):0;}
 function invLastV(it){var L=ST.invLast[ST.store][ST.invMode];var v=L?L[it.name]:undefined;return (v!==undefined&&v!=='')?v:'';}
 function invSafe(n){return n.replace(/[^a-zA-Z0-9]/g,'_');}
+function invResetSubmit(){
+  var btn=document.getElementById('submitBtn');
+  if(btn){btn.disabled=false;btn.textContent='Submit & email';}
+}
 
 function invRenderList(){
   var items=invItems(),cats=INV_CATS[ST.invMode],byCat={};
@@ -906,6 +910,8 @@ function invRenderList(){
   if(ST.editUnlocked)html+='<button class="add-btn" onclick="editInvItem(null)">+ Add item</button>';
   else html+='<button class="add-btn ghost" onclick="askPin(\'inv\')">\uD83D\uDD12 Unlock to edit / add items</button>';
   document.getElementById('invList').innerHTML=html;
+  invResetSubmit();
+  invUpdateBar();
 }
 function invRow(it){
   var low=invLow(it),has=invGV(it)!=='',last=invLastV(it);
@@ -929,6 +935,7 @@ function invSet(name,val){
     var low=invLow(it),has=invGV(it)!=='';
     if(row)row.className='inv-row'+(low?' low':(has?' good':''));
     if(inp)inp.className='inv-inp'+(low?' low':(has?' good':''));}
+  invResetSubmit();
   invUpdateBar();
 }
 function invUpdateBar(){
@@ -1003,7 +1010,7 @@ function invSubmit(){
     .then(function(sheet){
       var msg='Sent! Order report emailed and counts saved.';
       if(ST.invMode==='biw')msg+=sheet&&sheet.reason==='not_configured'?' Google Sheet link is ready; sheet sync needs webhook setup.':' Google Sheet sync started.';
-      invSt(msg,'ok');btn.textContent='Sent \u2713';ST.invCounts={};loadInvLast(ST.store).then(invRenderList);
+      invSt(msg,'ok');btn.textContent='Sent \u2713';ST.invCounts={};loadInvLast(ST.store).then(function(){invRenderList();setTimeout(invResetSubmit,1200);});
     })
     .catch(function(err){invSt('Failed: '+(err.text||err.message||err),'err');btn.disabled=false;btn.textContent='Submit & email';});
 }
