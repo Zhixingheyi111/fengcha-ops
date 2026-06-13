@@ -1131,6 +1131,8 @@ function deepStatus(t,doneMap){
   return {key:'upcoming',label:'Upcoming',rank:3};
 }
 function deepLastMeta(t){
+  var current=ST.completions[t.id];
+  if(current)return 'Last cleaned '+fmtDateTime(current.at)+' · '+current.name;
   var c=ST.deepLast[t.id];
   if(!c)return 'Never cleaned';
   return 'Last cleaned '+fmtDateTime(c.completed_at)+' · '+c.employee_name;
