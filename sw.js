@@ -1,7 +1,7 @@
 /* Feng Cha Ops — service worker (network-first for app, so updates reach phones) */
 /* Bump CACHE version whenever you want to force-clear old caches. */
 
-var CACHE = 'fengcha-ops-v11';
+var CACHE = 'fengcha-ops-v12';
 var SHELL = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(e){

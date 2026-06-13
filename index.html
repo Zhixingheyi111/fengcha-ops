@@ -1088,7 +1088,10 @@ function ckRow(t){
   var h='<div class="task'+(done?' done':'')+'" id="task_'+t.id+'" onclick="toggleTask('+t.id+')">';
   h+='<div class="check">'+(done?'\u2713':'')+'</div>';
   h+='<div class="task-body"><div class="task-name">'+esc(t.task)+'</div>';
-  if(done&&c.name)h+='<div class="task-by">'+esc(c.name)+'</div>';
+  if(done){
+    var meta=[c.name,fmtTime(c.at)].filter(Boolean).join(' \u00b7 ');
+    if(meta)h+='<div class="task-by">'+esc(meta)+'</div>';
+  }
   h+='</div>';
   if(ST.editUnlocked)h+='<button class="row-edit" onclick="event.stopPropagation();editTask('+t.id+')">\u270e</button>';
   h+='</div>';
@@ -1102,9 +1105,10 @@ function toggleTask(id){
     sb('checklist_completions?store=eq.'+encodeURIComponent(ST.store)+'&list_type=eq.'+ST.checkListType+'&period_key=eq.'+encodeURIComponent(pk)+'&task_id=eq.'+id,
       {method:'DELETE',headers:hdr({'Prefer':'return=minimal'})}).catch(function(){});
   } else {
-    ST.completions[id]={name:ST.emp,at:new Date().toISOString()};ckPatchRow(id);
+    var now=new Date().toISOString();
+    ST.completions[id]={name:ST.emp,at:now};ckPatchRow(id);
     sb('checklist_completions',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),
-      body:JSON.stringify([{store:ST.store,list_type:ST.checkListType,task_id:id,employee_name:ST.emp,period_key:pk}])})
+      body:JSON.stringify([{store:ST.store,list_type:ST.checkListType,task_id:id,employee_name:ST.emp,period_key:pk,completed_at:now}])})
       .then(function(r){if(r.ok)trySendDailyChecklistSummary();})
       .catch(function(){});
   }
