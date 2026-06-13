@@ -118,6 +118,8 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .nav-item.on{color:var(--accent)}
 .nav-ic{font-size:21px;line-height:1}
 .nav-lb{font-size:10px;font-weight:500}
+.botnav .nav-item{min-width:0}
+.botnav .nav-lb{font-size:9px}
 /* submit bar */
 .subbar{position:fixed;bottom:calc(58px + env(safe-area-inset-bottom,0px));left:0;right:0;max-width:600px;margin:0 auto;background:var(--surface);border-top:1px solid var(--border);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:55}
 .sb-stats{display:flex;gap:16px}
@@ -216,6 +218,28 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .emp-form{display:flex;gap:8px;margin-top:12px}
 .emp-form input{flex:1;min-width:0;padding:12px;font-size:16px;border:1.5px solid var(--bd2);border-radius:9px;font-family:inherit;background:var(--surface);color:var(--text)}
 .emp-form button{padding:12px 14px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+/* manager */
+.mgr-tabs{display:flex;gap:6px;margin-bottom:12px;overflow:auto;padding-bottom:2px}
+.mgr-tab{flex:1;min-width:max-content;padding:9px 10px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+.mgr-tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.mgr-cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.mgr-month{font-size:15px;font-weight:600}
+.mgr-arrow{width:34px;height:32px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);font-size:16px;cursor:pointer}
+.mgr-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.mgr-dow{font-size:10px;color:var(--muted);text-align:center;font-weight:600;text-transform:uppercase}
+.mgr-day{min-height:42px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-family:inherit;cursor:pointer;padding:5px 3px;font-size:12px;color:var(--text)}
+.mgr-day.off{opacity:.35}
+.mgr-day.sel{outline:2px solid var(--accent)}
+.mgr-day.green{background:var(--green-bg);border-color:#A8D9BC;color:var(--green-tx)}
+.mgr-day.amber{background:var(--amber-bg);border-color:#E4C27C;color:var(--amber-tx)}
+.mgr-day.red{background:var(--red-bg);border-color:#EFC0B0;color:var(--red-tx)}
+.mgr-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mgr-role-card{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}
+.mgr-role-top{font-size:13px;font-weight:600}
+.mgr-role-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.mgr-list{font-size:13px;line-height:1.4}
+.mgr-list li{margin:5px 0 5px 16px}
+.mgr-mini{font-size:11px;color:var(--muted);margin-top:2px}
 
 
 </style></head><body>
@@ -243,8 +267,9 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 <div class="tabpane" id="tab-check" style="display:none"></div>
 <div class="tabpane" id="tab-uni" style="display:none"></div>
 <div class="tabpane" id="tab-issues" style="display:none"></div>
+<div class="tabpane" id="tab-manager" style="display:none"></div>
 <div class="subbar" id="subbar" style="display:none"><div class="sb-stats"><div class="sb-stat"><div class="sb-num" id="barCnt">0</div><div class="sb-lb">Counted</div></div><div class="sb-stat"><div class="sb-num r" id="barOrd">0</div><div class="sb-lb">To order</div></div><div class="sb-stat"><div class="sb-num g" id="barStk">0</div><div class="sb-lb">Stocked</div></div></div><button class="sb-go" id="submitBtn" onclick="invSubmit()">Submit & email</button></div>
-<div class="botnav"><button class="nav-item on" id="nav-home" onclick="setTab('home')"><span class="nav-ic">⌂</span><span class="nav-lb">Home</span></button><button class="nav-item" id="nav-inv" onclick="setTab('inv')"><span class="nav-ic">▤</span><span class="nav-lb">Inventory</span></button><button class="nav-item" id="nav-check" onclick="setTab('check')"><span class="nav-ic">☑</span><span class="nav-lb">Checklists</span></button><button class="nav-item" id="nav-uni" onclick="setTab('uni')"><span class="nav-ic">&#128085;</span><span class="nav-lb">Uniform</span></button><button class="nav-item" id="nav-issues" onclick="setTab('issues')"><span class="nav-ic">&#9873;</span><span class="nav-lb">Issues</span></button></div>
+<div class="botnav"><button class="nav-item on" id="nav-home" onclick="setTab('home')"><span class="nav-ic">⌂</span><span class="nav-lb">Home</span></button><button class="nav-item" id="nav-inv" onclick="setTab('inv')"><span class="nav-ic">▤</span><span class="nav-lb">Inventory</span></button><button class="nav-item" id="nav-check" onclick="setTab('check')"><span class="nav-ic">☑</span><span class="nav-lb">Lists</span></button><button class="nav-item" id="nav-uni" onclick="setTab('uni')"><span class="nav-ic">&#128085;</span><span class="nav-lb">Uniform</span></button><button class="nav-item" id="nav-issues" onclick="setTab('issues')"><span class="nav-ic">&#9873;</span><span class="nav-lb">Issues</span></button><button class="nav-item" id="nav-manager" onclick="setTab('manager')"><span class="nav-ic">&#128197;</span><span class="nav-lb">Manager</span></button></div>
 </div>
 <div class="modal" id="pinModal"><div class="modal-box"><div class="modal-title">Enter edit PIN</div><input class="pin-input" id="pinInput" type="tel" inputmode="numeric" maxlength="4" placeholder="••••"><div class="pin-msg" id="pinMsg"></div><div class="modal-btns"><button class="m-cancel" onclick="closePin()">Cancel</button><button class="m-save" onclick="submitPin()">Unlock</button></div></div></div>
 <div class="modal" id="editModal"><div class="modal-box"><div class="modal-title" id="editTitle"></div><div id="editBody"></div><div class="modal-btns"><button class="m-cancel" onclick="closeEdit()">Cancel</button><button class="m-save" id="editSave">Save</button></div><button class="m-del" id="editDelete" style="display:none">Remove</button></div></div>
@@ -283,6 +308,10 @@ var ST={
   checkListType:'daily',
   completions:{},      /* periodKey-scoped: taskId -> {name,at} */
   issues:[],           /* supervisor-logged issues for current store */
+  mgrStore:null,
+  mgrDate:null,
+  mgrMonth:null,
+  mgrSection:'history',
 };
 
 /* ---- Supabase headers ---- */
@@ -315,6 +344,18 @@ function periodKey(listType,dt){
   if(listType==='biweekly')return biweekKey(d);
   if(listType==='monthly')return d.getFullYear()+'-'+pad2(d.getMonth()+1);
   return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+function dateKey(d){return periodKey('daily',d);}
+function parseDateKey(k){
+  var p=String(k||'').split('-');
+  return new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));
+}
+function addDays(d,n){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()+n);return x;}
+function monthKey(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1);}
+function fmtDateKey(k){return parseDateKey(k).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+function fmtTime(s){
+  var d=s?new Date(s):null;if(!d||isNaN(d))return '';
+  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 }
 
 /* ---- remember-me (localStorage) ----
@@ -403,6 +444,33 @@ function loadCompletions(store,listType,pk){
       if(Array.isArray(d))d.forEach(function(c){ST.completions[c.task_id]={name:c.employee_name,at:c.completed_at};});
       return d;
     }).catch(function(){return [];});
+}
+function loadDailyCompletions(store,dateKey){
+  return sb('checklist_completions?select=*&store=eq.'+encodeURIComponent(store)
+      +'&list_type=eq.daily&period_key=eq.'+encodeURIComponent(dateKey)+'&order=completed_at.asc')
+    .then(function(r){return r.json();})
+    .then(function(d){return Array.isArray(d)?d:[];})
+    .catch(function(){return [];});
+}
+function loadDailyCompletionsRange(store,fromKey,toKey){
+  return sb('checklist_completions?select=*&store=eq.'+encodeURIComponent(store)
+      +'&list_type=eq.daily&period_key=gte.'+encodeURIComponent(fromKey)
+      +'&period_key=lte.'+encodeURIComponent(toKey)+'&order=period_key.asc')
+    .then(function(r){return r.json();})
+    .then(function(d){return Array.isArray(d)?d:[];})
+    .catch(function(){return [];});
+}
+function loadChecklistReport(store,dateKey){
+  return sb('checklist_reports?select=*&store=eq.'+encodeURIComponent(store)
+      +'&date_key=eq.'+encodeURIComponent(dateKey)+'&report_type=eq.daily_closing_summary&limit=1')
+    .then(function(r){return r.json();})
+    .then(function(d){return Array.isArray(d)&&d.length?d[0]:null;})
+    .catch(function(){return null;});
+}
+function saveChecklistReport(store,dateKey,sentBy,emailTo){
+  return sb('checklist_reports',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify([{
+    store:store,date_key:dateKey,report_type:'daily_closing_summary',sent_by:sentBy,email_to:emailTo
+  }])});
 }
 
 /* ---------- DASHBOARD aggregation (both stores) ---------- */
@@ -525,6 +593,95 @@ function buildUniformDash(){
   return Promise.all(jobs).then(function(){return out;});
 }
 
+/* ---------- MANAGER checklist summary helpers ---------- */
+function dailyChecklistTasks(store){
+  return ST.tasks.filter(function(t){
+    return taskVisibleForStore(t,store) && t.list_type==='daily' && t.section!=='Uniform'
+      && (t.section==='Opening'||t.section==='Closing');
+  });
+}
+function summarizeDaily(store,dateKey,rows){
+  var tasks=dailyChecklistTasks(store),doneByTask={};
+  (rows||[]).forEach(function(r){doneByTask[r.task_id]=r;});
+  var groups={},completed=[],missing=[];
+  tasks.forEach(function(t){
+    var key=(t.shift||'')+'|'+(t.role||'');
+    if(!groups[key])groups[key]={shift:t.shift||'',role:t.role||'',done:0,total:0,missing:[]};
+    groups[key].total++;
+    if(doneByTask[t.id]){
+      groups[key].done++;
+      completed.push({task:t,completion:doneByTask[t.id]});
+    }else{
+      groups[key].missing.push(t);
+      missing.push(t);
+    }
+  });
+  var groupList=Object.keys(groups).sort().map(function(k){return groups[k];});
+  var done=completed.length,total=tasks.length;
+  return {store:store,dateKey:dateKey,tasks:tasks,groups:groupList,completed:completed,missing:missing,done:done,total:total,complete:total>0&&done>=total};
+}
+function summaryStatus(sum){
+  if(!sum || !sum.total)return 'red';
+  if(sum.done>=sum.total)return 'green';
+  if(sum.done>0)return 'amber';
+  return 'red';
+}
+function closingCompleteForStore(store){
+  var tasks=dailyChecklistTasks(store).filter(function(t){return t.section==='Closing'&&t.shift==='PM';});
+  if(tasks.length===0)return false;
+  return tasks.every(function(t){return !!ST.completions[t.id];});
+}
+function managerEmailBody(sum){
+  var N='\n',BAR='===============================================',DASH='-----------------------------------------------';
+  var msg=BAR+N+'  FENG CHA '+storeName(sum.store).toUpperCase()+' — DAILY CHECKLIST SUMMARY'+N+'  '+fmtDateKey(sum.dateKey)+N+BAR+N+N;
+  msg+='Overall: '+sum.done+' of '+sum.total+' complete'+N+N;
+  msg+='BY SHIFT / ROLE'+N+DASH+N;
+  sum.groups.forEach(function(g){
+    msg+='- '+(g.shift||'Daily')+' '+(g.role||'Team')+': '+g.done+'/'+g.total+N;
+  });
+  msg+=N+'COMPLETED'+N+DASH+N;
+  if(sum.completed.length){
+    sum.completed.forEach(function(x){
+      msg+='- '+(x.task.shift||'')+' '+(x.task.role||'')+' — '+x.task.task+' ('+x.completion.employee_name+', '+fmtTime(x.completion.completed_at)+')'+N;
+    });
+  }else msg+='No checklist items completed.'+N;
+  msg+=N+'MISSING'+N+DASH+N;
+  if(sum.missing.length){
+    sum.groups.forEach(function(g){
+      if(!g.missing.length)return;
+      msg+=N+(g.shift||'Daily')+' '+(g.role||'Team')+N;
+      g.missing.forEach(function(t){msg+='  - '+t.task+N;});
+    });
+  }else msg+='No missing checklist items.'+N;
+  msg+=N+BAR+N+'Sent via Feng Cha Ops App'+N;
+  return msg;
+}
+function trySendDailyChecklistSummary(){
+  if(ST.checkListType!=='daily' || ST.checkShift!=='PM' || !ST.store)return;
+  if(!closingCompleteForStore(ST.store))return;
+  var dk=periodKey('daily'),store=ST.store;
+  loadChecklistReport(store,dk).then(function(existing){
+    if(existing)return;
+    return loadDailyCompletions(store,dk).then(function(rows){
+      var sum=summarizeDaily(store,dk,rows);
+      var body=managerEmailBody(sum);
+      var date=fmtDateKey(dk);
+      return saveChecklistReport(store,dk,ST.emp,OWNER_EMAIL).then(function(r){
+        if(!r.ok)return;
+        try{emailjs.init({publicKey:EMAILJS_PUBLIC});}catch(e){}
+        return emailjs.send(EMAILJS_SVC,EMAILJS_TPL,{
+          to_email:OWNER_EMAIL,
+          subject:'[Feng Cha '+storeName(store)+'] Daily checklist summary - '+date,
+          name:storeName(store)+' Store',
+          email:OWNER_EMAIL,
+          time:date,
+          message:body
+        });
+      });
+    });
+  }).catch(function(){});
+}
+
 
 /* ============================================================
    v5 — UI render + actions
@@ -533,7 +690,7 @@ function buildUniformDash(){
 /* ---------- tab switching ---------- */
 function setTab(t){
   ST.tab=t;
-  ['home','inv','check','uni','issues'].forEach(function(x){
+  ['home','inv','check','uni','issues','manager'].forEach(function(x){
     var pane=document.getElementById('tab-'+x); if(pane)pane.style.display=(x===t)?'block':'none';
     var btn=document.getElementById('nav-'+x); if(btn)btn.className='nav-item'+(x===t?' on':'');
   });
@@ -542,6 +699,7 @@ function setTab(t){
   else if(t==='check')renderCheck();
   else if(t==='uni')renderUniform(true);
   else if(t==='issues')renderIssues();
+  else if(t==='manager')renderManager();
 }
 
 /* ---------- top bar (name + store + switch) ---------- */
@@ -903,7 +1061,9 @@ function toggleTask(id){
   } else {
     ST.completions[id]={name:ST.emp,at:new Date().toISOString()};ckPatchRow(id);
     sb('checklist_completions',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),
-      body:JSON.stringify([{store:ST.store,list_type:ST.checkListType,task_id:id,employee_name:ST.emp,period_key:pk}])}).catch(function(){});
+      body:JSON.stringify([{store:ST.store,list_type:ST.checkListType,task_id:id,employee_name:ST.emp,period_key:pk}])})
+      .then(function(r){if(r.ok)trySendDailyChecklistSummary();})
+      .catch(function(){});
   }
   ckUpdateProg();
 }
@@ -916,6 +1076,103 @@ function ckUpdateProg(){
   var fill=document.querySelector('#ckList .prog-fill'),row=document.querySelector('#ckList .prog-row');
   if(fill)fill.style.width=(tasks.length?done/tasks.length*100:0)+'%';
   if(row)row.innerHTML='<span>'+done+' of '+tasks.length+' done</span><span>'+(tasks.length?Math.round(done/tasks.length*100):0)+'%</span>';
+}
+
+/* ============ MANAGER ============ */
+function mgrInit(){
+  var now=new Date();
+  if(!ST.mgrStore)ST.mgrStore=ST.store||'Heights';
+  if(!ST.mgrDate)ST.mgrDate=dateKey(now);
+  if(!ST.mgrMonth)ST.mgrMonth=monthKey(now);
+}
+function renderManager(){
+  var c=document.getElementById('tab-manager');
+  if(!ST.editUnlocked){
+    c.innerHTML='<div class="h-title">Manager</div>'
+      +'<div class="h-sub">Checklist history and manager tools</div>'
+      +'<div class="card"><div class="more-note">Manager access. Unlock with the manager PIN to review calendar history, send summaries, manage issues, and edit employees.</div>'
+      +'<button class="add-btn ghost" onclick="askPin(\'manager\')">🔒 Unlock manager view</button></div>';
+    return;
+  }
+  mgrInit();
+  var tabs=[['history','History'],['issues','Issues'],['employees','Employees']];
+  var h='<div class="h-title">Manager</div><div class="h-sub">Checklist history · '+esc(storeName(ST.mgrStore))+'</div>';
+  h+='<div class="mgr-tabs">';
+  tabs.forEach(function(t){h+='<button class="mgr-tab'+(ST.mgrSection===t[0]?' on':'')+'" onclick="mgrSection(\''+t[0]+'\')">'+t[1]+'</button>';});
+  h+='</div><div id="mgrBody"><div class="loading">Loading…</div></div>';
+  c.innerHTML=h;
+  if(ST.mgrSection==='history')renderManagerHistory();
+  else if(ST.mgrSection==='issues')renderManagerIssues();
+  else renderManagerEmployees();
+}
+function mgrSection(s){ST.mgrSection=s;renderManager();}
+function mgrStore(s){ST.mgrStore=s;renderManagerHistory();}
+function mgrMonth(delta){
+  var p=ST.mgrMonth.split('-'),d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,1);
+  d.setMonth(d.getMonth()+delta);ST.mgrMonth=monthKey(d);renderManagerHistory();
+}
+function mgrPickDate(k){ST.mgrDate=k;renderManagerHistory();}
+function renderManagerHistory(){
+  var body=document.getElementById('mgrBody');if(!body)return;
+  var p=ST.mgrMonth.split('-'),monthDate=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,1);
+  var first=new Date(monthDate.getFullYear(),monthDate.getMonth(),1);
+  var gridStart=addDays(first,-first.getDay());
+  var gridEnd=addDays(gridStart,41);
+  var fromKey=dateKey(gridStart),toKey=dateKey(gridEnd);
+  body.innerHTML='<div class="seg"><button class="seg-btn'+(ST.mgrStore==='Heights'?' on':'')+'" onclick="mgrStore(\'Heights\')">Heights</button><button class="seg-btn'+(ST.mgrStore==='SP'?' on':'')+'" onclick="mgrStore(\'SP\')">Spring Branch</button></div>'
+    +'<div class="card"><div class="loading">Loading calendar…</div></div>';
+  Promise.all([loadDailyCompletionsRange(ST.mgrStore,fromKey,toKey),loadDailyCompletions(ST.mgrStore,ST.mgrDate),loadChecklistReport(ST.mgrStore,ST.mgrDate)])
+    .then(function(res){
+      var rows=res[0],selectedRows=res[1],report=res[2],byDate={};
+      rows.forEach(function(r){(byDate[r.period_key]=byDate[r.period_key]||[]).push(r);});
+      var monthLabel=monthDate.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+      var html='<div class="seg"><button class="seg-btn'+(ST.mgrStore==='Heights'?' on':'')+'" onclick="mgrStore(\'Heights\')">Heights</button><button class="seg-btn'+(ST.mgrStore==='SP'?' on':'')+'" onclick="mgrStore(\'SP\')">Spring Branch</button></div>';
+      html+='<div class="card"><div class="mgr-cal-head"><button class="mgr-arrow" onclick="mgrMonth(-1)">‹</button><div class="mgr-month">'+esc(monthLabel)+'</div><button class="mgr-arrow" onclick="mgrMonth(1)">›</button></div>';
+      html+='<div class="mgr-cal">';
+      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d){html+='<div class="mgr-dow">'+d+'</div>';});
+      for(var i=0;i<42;i++){
+        var d=addDays(gridStart,i),k=dateKey(d),sum=summarizeDaily(ST.mgrStore,k,byDate[k]||[]),status=summaryStatus(sum);
+        var off=d.getMonth()!==monthDate.getMonth();
+        html+='<button class="mgr-day '+status+(off?' off':'')+(k===ST.mgrDate?' sel':'')+'" onclick="mgrPickDate(\''+k+'\')">'+d.getDate()+'</button>';
+      }
+      html+='</div></div>';
+      html+=managerSummaryCard(summarizeDaily(ST.mgrStore,ST.mgrDate,selectedRows),report);
+      body.innerHTML=html;
+    }).catch(function(e){body.innerHTML='<div class="loading err">Could not load manager history: '+esc(e.message)+'</div>';});
+}
+function managerSummaryCard(sum,report){
+  var h='<div class="card"><div class="card-hd"><span class="card-title">'+esc(fmtDateKey(sum.dateKey))+' · '+esc(storeName(sum.store))+'</span><span class="pill '+(summaryStatus(sum)==='green'?'pill-green':(summaryStatus(sum)==='amber'?'pill-amber':'pill-red'))+'">'+sum.done+'/'+sum.total+'</span></div>';
+  if(report)h+='<div class="muted-row">Summary emailed '+esc(fmtTime(report.sent_at))+' by '+esc(report.sent_by||'manager')+'.</div>';
+  h+='<div class="mgr-summary-grid">';
+  sum.groups.forEach(function(g){
+    h+='<div class="mgr-role-card"><div class="mgr-role-top">'+esc(g.shift+' '+g.role)+'</div><div class="mgr-role-sub">'+g.done+' of '+g.total+' complete</div></div>';
+  });
+  h+='</div>';
+  h+='<div class="card-hd" style="margin-top:8px"><span class="card-title">Completed</span></div><ul class="mgr-list">';
+  if(sum.completed.length)sum.completed.forEach(function(x){h+='<li>'+esc(x.task.shift+' '+x.task.role+' · '+x.task.task)+'<div class="mgr-mini">'+esc(x.completion.employee_name)+' · '+esc(fmtTime(x.completion.completed_at))+'</div></li>';});
+  else h+='<li>No completed checklist items.</li>';
+  h+='</ul><div class="card-hd" style="margin-top:8px"><span class="card-title">Missing</span></div>';
+  if(sum.missing.length){
+    sum.groups.forEach(function(g){
+      if(!g.missing.length)return;
+      h+='<div class="sec-hd">'+esc(g.shift+' '+g.role)+'</div><ul class="mgr-list">';
+      g.missing.forEach(function(t){h+='<li>'+esc(t.task)+'</li>';});
+      h+='</ul>';
+    });
+  }else h+='<div class="muted-row">No missing checklist items.</div>';
+  h+='</div>';
+  return h;
+}
+function renderManagerIssues(){
+  var body=document.getElementById('mgrBody');if(!body)return;
+  body.innerHTML='<div id="mgrIssueForm"></div><div id="mgrIssueList"><div class="loading">Loading…</div></div>';
+  ISS.shift='AM';renderIssueForm('mgrIssueForm','mgrIssSt');
+  loadIssues(ST.mgrStore).then(function(){issRenderList('mgrIssueList');});
+}
+function renderManagerEmployees(){
+  var body=document.getElementById('mgrBody');if(!body)return;
+  body.innerHTML='<div id="mgrEmpAdmin"></div>';
+  renderEmployeeAdmin('mgrEmpAdmin');
 }
 
 /* ============ PIN + INLINE EDIT ============ */
@@ -934,6 +1191,7 @@ function submitPin(){
     else if(ST._pinCtx==='check')ckRenderList();
     else if(ST._pinCtx==='uni')renderUniform(true);
     else if(ST._pinCtx==='issues')renderIssues();
+    else if(ST._pinCtx==='manager')renderManager();
   } else {document.getElementById('pinMsg').textContent='Incorrect PIN.';document.getElementById('pinInput').value='';}
 }
 
@@ -1250,7 +1508,8 @@ function renderIssues(){
   loadIssues(ST.store).then(function(){issRenderList();});
 }
 
-function renderIssueForm(){
+function renderIssueForm(targetId,statusId){
+  targetId=targetId||'issForm';statusId=statusId||'issSt';ISS.formId=targetId;ISS.statusId=statusId;
   var catOpts='<option value="">Select type…</option>'+ISS_CATS.map(function(x){return '<option>'+esc(x)+'</option>';}).join('');
   var empOpts='<option value="">— not about one person —</option>'+ST.employees.map(function(n){return '<option value="'+escA(n)+'">'+esc(n)+'</option>';}).join('');
   var h='<div class="card"><div class="card-hd"><span class="card-title">Log an issue</span></div>';
@@ -1261,8 +1520,8 @@ function renderIssueForm(){
     +'<button type="button" class="seg-btn'+(ISS.shift==='PM'?' on':'')+'" id="issShPM" onclick="issShift(\'PM\')">PM</button></div></div>';
   h+='<div class="iss-field"><label>What happened</label><textarea class="iss-ta" id="issDesc" placeholder="e.g. Bathroom not cleaned at close; fruit not prepped for AM."></textarea></div>';
   h+='<button class="id-go" onclick="logIssue()">Log issue</button>';
-  h+='<div class="status" id="issSt"></div></div>';
-  document.getElementById('issForm').innerHTML=h;
+  h+='<div class="status" id="'+statusId+'"></div></div>';
+  document.getElementById(targetId).innerHTML=h;
 }
 function issShift(s){
   ISS.shift=s;
@@ -1270,24 +1529,27 @@ function issShift(s){
   if(a)a.className='seg-btn'+(s==='AM'?' on':'');
   if(p)p.className='seg-btn'+(s==='PM'?' on':'');
 }
-function issSt(m,t){var e=document.getElementById('issSt');if(e){e.textContent=m;e.className='status '+t;}}
+function issSt(m,t){var e=document.getElementById(ISS.statusId||'issSt');if(e){e.textContent=m;e.className='status '+t;}}
 
 function logIssue(){
-  var cat=document.getElementById('issCat').value;
-  var about=document.getElementById('issAbout').value;
-  var desc=(document.getElementById('issDesc').value||'').trim();
+  var form=document.getElementById(ISS.formId||'issForm');
+  var cat=form.querySelector('#issCat').value;
+  var about=form.querySelector('#issAbout').value;
+  var desc=(form.querySelector('#issDesc').value||'').trim();
   if(!cat){issSt('Pick an issue type.','err');return;}
   if(!desc){issSt('Describe what happened.','err');return;}
-  var row={store:ST.store,date_key:periodKey('daily'),shift:ISS.shift,category:cat,
+  var issueStore=(ST.tab==='manager')?(ST.mgrStore||ST.store):ST.store;
+  var row={store:issueStore,date_key:periodKey('daily'),shift:ISS.shift,category:cat,
     about_employee:about||null,description:desc,reported_by:ST.emp,status:'open'};
-  var btn=document.querySelector('#issForm .id-go');if(btn){btn.disabled=true;btn.textContent='Logging…';}
+  var btn=document.querySelector('#'+(ISS.formId||'issForm')+' .id-go');if(btn){btn.disabled=true;btn.textContent='Logging…';}
   issSt('Saving…','info');
   sb('issues',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify([row])})
     .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
     .then(function(){
-      ISS.shift='AM';renderIssueForm();
+      var fid=ISS.formId||'issForm',sid=ISS.statusId||'issSt',lid=(fid==='mgrIssueForm')?'mgrIssueList':'issList';
+      ISS.shift='AM';renderIssueForm(fid,sid);
       issSt('Logged.','ok');
-      return loadIssues(ST.store).then(issRenderList);
+      return loadIssues(issueStore).then(function(){issRenderList(lid);});
     })
     .catch(function(err){issSt('Failed: '+(err.text||err.message||err),'err');if(btn){btn.disabled=false;btn.textContent='Log issue';}});
 }
@@ -1308,7 +1570,8 @@ function issRow(i,resolved){
   h+='</div>';
   return h;
 }
-function issRenderList(){
+function issRenderList(targetId){
+  targetId=targetId||'issList';
   var open=ST.issues.filter(function(i){return i.status!=='resolved';});
   var resolved=ST.issues.filter(function(i){return i.status==='resolved';}).slice(0,20);
   var h='<div class="card"><div class="card-hd"><span class="card-title">Open issues</span>'
@@ -1321,12 +1584,15 @@ function issRenderList(){
     resolved.forEach(function(i){h+=issRow(i,true);});
     h+='</div>';
   }
-  var el=document.getElementById('issList');if(el)el.innerHTML=h;
+  var el=document.getElementById(targetId);if(el)el.innerHTML=h;
 }
 
 /* ============ EMPLOYEES — manager add/remove ============ */
-function renderEmployeeAdmin(msg,type){
-  var el=document.getElementById('empAdmin');if(!el)return;
+function renderEmployeeAdmin(targetId,msg,type){
+  if(arguments.length<3 && (targetId==='ok'||targetId==='err'||targetId==='info')){type=targetId;targetId=null;}
+  if(arguments.length<3 && targetId && !document.getElementById(targetId)){type=msg;msg=targetId;targetId=null;}
+  targetId=targetId||'empAdmin';ST.empAdminTarget=targetId;
+  var el=document.getElementById(targetId);if(!el)return;
   var h='<div class="card"><div class="card-hd"><span class="card-title">Employees</span>'
     +'<span class="pill pill-gray">'+ST.employees.length+'</span></div>';
   if(ST.employees.length===0){
@@ -1342,9 +1608,14 @@ function renderEmployeeAdmin(msg,type){
   h+='<div class="status '+(type||'')+'" id="empSt"'+(msg?' style="display:block"':'')+'>'+esc(msg||'')+'</div></div>';
   el.innerHTML=h;
 }
-function empSt(m,t){var e=document.getElementById('empSt');if(e){e.textContent=m;e.className='status '+t;}}
+function empSt(m,t){
+  var root=document.getElementById(ST.empAdminTarget||'empAdmin');
+  var e=root?root.querySelector('#empSt'):document.getElementById('empSt');
+  if(e){e.textContent=m;e.className='status '+t;}
+}
 function addEmployee(){
-  var input=document.getElementById('empNewName');
+  var root=document.getElementById(ST.empAdminTarget||'empAdmin');
+  var input=root?root.querySelector('#empNewName'):document.getElementById('empNewName');
   var name=(input&&input.value||'').trim().replace(/\s+/g,' ');
   if(!name){empSt('Enter a name first.','err');return;}
   if(ST.employees.some(function(n){return n.toLowerCase()===name.toLowerCase();})){
@@ -1354,7 +1625,7 @@ function addEmployee(){
   sb('employees',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify([{name:name,active:true}])})
     .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
     .then(function(){return loadEmployees();})
-    .then(function(){renderIdentity();renderIssueForm();renderEmployeeAdmin('Added '+name+'.','ok');})
+    .then(function(){renderIdentity();renderIssueForm();renderEmployeeAdmin(ST.empAdminTarget,'Added '+name+'.','ok');})
     .catch(function(err){empSt('Add failed: '+(err.message||err),'err');});
 }
 function removeEmployee(name){
@@ -1364,20 +1635,24 @@ function removeEmployee(name){
     .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
     .then(function(){return loadEmployees();})
     .then(function(){
-      renderIdentity();renderIssueForm();renderEmployeeAdmin('Removed '+name+'.','ok');
+      renderIdentity();renderIssueForm();renderEmployeeAdmin(ST.empAdminTarget,'Removed '+name+'.','ok');
       if(ST.emp===name){forgetMe();notMe();}
     })
     .catch(function(err){empSt('Remove failed: '+(err.message||err),'err');});
 }
 function resolveIssue(id){
+  var issueStore=(ST.tab==='manager')?(ST.mgrStore||ST.store):ST.store;
+  var listTarget=(ST.tab==='manager')?'mgrIssueList':'issList';
   sb('issues?id=eq.'+id,{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),
     body:JSON.stringify({status:'resolved',resolved_by:ST.emp,resolved_at:new Date().toISOString()})})
-    .then(function(r){if(r.ok)loadIssues(ST.store).then(issRenderList);});
+    .then(function(r){if(r.ok)loadIssues(issueStore).then(function(){issRenderList(listTarget);});});
 }
 function reopenIssue(id){
+  var issueStore=(ST.tab==='manager')?(ST.mgrStore||ST.store):ST.store;
+  var listTarget=(ST.tab==='manager')?'mgrIssueList':'issList';
   sb('issues?id=eq.'+id,{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),
     body:JSON.stringify({status:'open',resolved_by:null,resolved_at:null})})
-    .then(function(r){if(r.ok)loadIssues(ST.store).then(issRenderList);});
+    .then(function(r){if(r.ok)loadIssues(issueStore).then(function(){issRenderList(listTarget);});});
 }
 
 
