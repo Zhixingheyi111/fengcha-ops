@@ -100,6 +100,12 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .task-name{font-size:15px;font-weight:500;line-height:1.35}
 .task.done .task-name{color:var(--green-tx)}
 .task-by{font-size:12px;color:var(--muted);margin-top:3px}
+.task-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.due-pill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:999px}
+.due-pill.overdue{background:var(--red-bg);color:var(--red-tx)}
+.due-pill.due{background:var(--amber-bg);color:var(--amber-tx)}
+.due-pill.upcoming{background:var(--gray-bg);color:var(--gray-tx)}
+.due-pill.done{background:var(--green-bg);color:var(--green-tx)}
 .add-btn{width:100%;padding:13px;background:var(--acc-bg);color:var(--accent);border:1.5px dashed #EFC0B0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px;font-family:inherit}
 .add-btn.ghost{background:var(--gray-bg);color:var(--muted);border-color:var(--bd2)}
 /* more */
@@ -327,6 +333,8 @@ var ST={
   checkShift:'AM',
   checkListType:'daily',
   completions:{},      /* periodKey-scoped: taskId -> {name,at} */
+  deepLast:{},          /* taskId -> latest completion for deep clean views */
+  mgrDeepDone:{},       /* taskId -> current-period completion for manager deep clean */
   issues:[],           /* supervisor-logged issues for current store */
   mgrStore:null,
   mgrDate:null,
@@ -373,9 +381,35 @@ function parseDateKey(k){
 function addDays(d,n){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()+n);return x;}
 function monthKey(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1);}
 function fmtDateKey(k){return parseDateKey(k).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+function fmtDateTime(s){
+  var d=s?new Date(s):null;if(!d||isNaN(d))return '';
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
 function fmtTime(s){
   var d=s?new Date(s):null;if(!d||isNaN(d))return '';
   return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function weekNum(d){var m=isoWeek(d).match(/W(\d+)/);return m?parseInt(m[1],10):1;}
+function biweekGroup(d){return weekNum(d)%2?'A':'B';}
+function monthWeek(d){return Math.min(4,Math.ceil(d.getDate()/7));}
+function scheduleLabel(t){
+  if(t.list_type==='weekly')return t.due_weekday!==null&&t.due_weekday!==undefined?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][parseInt(t.due_weekday,10)]:'Every week';
+  if(t.list_type==='biweekly')return t.schedule_group?'Week '+t.schedule_group:'Every bi-week';
+  if(t.list_type==='monthly')return t.schedule_group?'Week '+t.schedule_group:'Every month';
+  return '';
+}
+function isDeepDueNow(t,d){
+  d=d||new Date();
+  if(t.list_type==='weekly')return t.due_weekday===null||t.due_weekday===undefined||parseInt(t.due_weekday,10)===d.getDay();
+  if(t.list_type==='biweekly')return !t.schedule_group || String(t.schedule_group).toUpperCase()===biweekGroup(d);
+  if(t.list_type==='monthly')return !t.schedule_group || String(t.schedule_group)===String(monthWeek(d));
+  return true;
+}
+function isDeepOverdue(t,d){
+  d=d||new Date();
+  if(t.list_type==='weekly'&&t.due_weekday!==null&&t.due_weekday!==undefined)return d.getDay()>parseInt(t.due_weekday,10);
+  if(t.list_type==='monthly'&&t.schedule_group)return monthWeek(d)>parseInt(t.schedule_group,10);
+  return false;
 }
 
 /* ---- remember-me (localStorage) ----
@@ -470,6 +504,27 @@ function loadCompletions(store,listType,pk){
       if(Array.isArray(d))d.forEach(function(c){ST.completions[c.task_id]={name:c.employee_name,at:c.completed_at};});
       return d;
     }).catch(function(){return [];});
+}
+function loadDeepLast(store,listType,append){
+  if(!append)ST.deepLast={};
+  return sb('checklist_completions?select=task_id,employee_name,completed_at,period_key&store=eq.'+encodeURIComponent(store)
+      +'&list_type=eq.'+listType+'&order=completed_at.desc&limit=500')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(Array.isArray(d))d.forEach(function(c){if(!ST.deepLast[c.task_id])ST.deepLast[c.task_id]=c;});
+      return ST.deepLast;
+    }).catch(function(){if(!append)ST.deepLast={};return {};});
+}
+function loadDeepCurrent(store,listType,append){
+  if(!append)ST.mgrDeepDone={};
+  var pk=periodKey(listType);
+  return sb('checklist_completions?select=task_id,employee_name,completed_at,period_key&store=eq.'+encodeURIComponent(store)
+      +'&list_type=eq.'+listType+'&period_key=eq.'+encodeURIComponent(pk))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(Array.isArray(d))d.forEach(function(c){ST.mgrDeepDone[c.task_id]=c;});
+      return ST.mgrDeepDone;
+    }).catch(function(){if(!append)ST.mgrDeepDone={};return {};});
 }
 function loadDailyCompletions(store,dateKey){
   return sb('checklist_completions?select=*&store=eq.'+encodeURIComponent(store)
@@ -568,7 +623,7 @@ function buildDashboardInner(){
         .then(function(comps){
           comps=Array.isArray(comps)?comps:[];
           var doneIds={};comps.forEach(function(c){doneIds[c.task_id]=1;});
-          var ts=ST.tasks.filter(function(t){return taskVisibleForStore(t,s)&&t.list_type===type;});
+          var ts=ST.tasks.filter(function(t){return taskVisibleForStore(t,s)&&t.list_type===type&&(isDeepDueNow(t,new Date())||isDeepOverdue(t,new Date())||doneIds[t.id]);});
           var done=0;ts.forEach(function(t){if(doneIds[t.id])done++;});
           out.deep[s][type]={done:done,total:ts.length};
         }).catch(function(){out.deep[s][type]={done:0,total:0};})
@@ -1042,7 +1097,9 @@ function renderCheck(){
       +'<button class="seg-btn'+(ST.checkShift==='PM'?' on':'')+'" onclick="ckShift(\'PM\')">PM \u00b7 Closing</button></div>';
   } else document.getElementById('ckRoleBar').innerHTML='';
   var pk=periodKey(ST.checkListType);
-  loadCompletions(ST.store,ST.checkListType,pk).then(function(){ckRenderList();});
+  var loaders=[loadCompletions(ST.store,ST.checkListType,pk)];
+  if(!isDaily)loaders.push(loadDeepLast(ST.store,ST.checkListType));
+  Promise.all(loaders).then(function(){ckRenderList();});
 }
 function ckGroup(g){
   if(g==='daily')ST.checkListType='daily';
@@ -1066,8 +1123,27 @@ function ckTasksFor(){
     return true;
   });
 }
+function deepStatus(t,doneMap){
+  var done=doneMap?!!doneMap[t.id]:!!ST.completions[t.id],due=isDeepDueNow(t,new Date());
+  if(done)return {key:'done',label:'Done',rank:4};
+  if(isDeepOverdue(t,new Date()))return {key:'overdue',label:'Overdue',rank:0};
+  if(due)return {key:'due',label:'Due now',rank:1};
+  return {key:'upcoming',label:'Upcoming',rank:3};
+}
+function deepLastMeta(t){
+  var c=ST.deepLast[t.id];
+  if(!c)return 'Never cleaned';
+  return 'Last cleaned '+fmtDateTime(c.completed_at)+' · '+c.employee_name;
+}
 function ckRenderList(){
   var tasks=ckTasksFor();
+  if(ST.checkListType!=='daily'){
+    tasks=tasks.slice().sort(function(a,b){
+      var sa=deepStatus(a),sb=deepStatus(b);
+      if(sa.rank!==sb.rank)return sa.rank-sb.rank;
+      return (a.sort_order||0)-(b.sort_order||0);
+    });
+  }
   var bySec={},order=['Opening','Freetime','Closing','Deep Clean'];
   tasks.forEach(function(t){(bySec[t.section]=bySec[t.section]||[]).push(t);});
   var done=0;tasks.forEach(function(t){if(ST.completions[t.id])done++;});
@@ -1091,6 +1167,12 @@ function ckRow(t){
   if(done){
     var meta=[c.name,fmtTime(c.at)].filter(Boolean).join(' \u00b7 ');
     if(meta)h+='<div class="task-by">'+esc(meta)+'</div>';
+  }
+  if(ST.checkListType!=='daily'){
+    var st=deepStatus(t),last=deepLastMeta(t),sched=scheduleLabel(t);
+    h+='<div class="task-meta"><span class="due-pill '+st.key+'">'+esc(st.label)+'</span>';
+    if(sched)h+='<span class="due-pill upcoming">'+esc(sched)+'</span>';
+    h+='</div><div class="task-by">'+esc(last)+'</div>';
   }
   h+='</div>';
   if(ST.editUnlocked)h+='<button class="row-edit" onclick="event.stopPropagation();editTask('+t.id+')">\u270e</button>';
@@ -1142,13 +1224,14 @@ function renderManager(){
     return;
   }
   mgrInit();
-  var tabs=[['history','History'],['issues','Issues'],['employees','Employees']];
+  var tabs=[['history','History'],['deep','Deep Clean'],['issues','Issues'],['employees','Employees']];
   var h='<div class="h-title">Manager</div><div class="h-sub">Checklist history · '+esc(storeName(ST.mgrStore))+'</div>';
   h+='<div class="mgr-tabs">';
   tabs.forEach(function(t){h+='<button class="mgr-tab'+(ST.mgrSection===t[0]?' on':'')+'" onclick="mgrSection(\''+t[0]+'\')">'+t[1]+'</button>';});
   h+='</div><div id="mgrBody"><div class="loading">Loading…</div></div>';
   c.innerHTML=h;
   if(ST.mgrSection==='history')renderManagerHistory();
+  else if(ST.mgrSection==='deep')renderManagerDeep();
   else if(ST.mgrSection==='issues')renderManagerIssues();
   else renderManagerEmployees();
 }
@@ -1215,6 +1298,34 @@ function managerSummaryCard(sum,report){
   }else h+='<div class="muted-row">No missing checklist items.</div>';
   h+='</div>';
   return h;
+}
+function renderManagerDeep(){
+  var body=document.getElementById('mgrBody');if(!body)return;
+  body.innerHTML=managerStoreSeg()+'<div class="card"><div class="loading">Loading deep clean…</div></div>';
+  ST.deepLast={};ST.mgrDeepDone={};
+  Promise.all([
+    loadDeepLast(ST.mgrStore,'weekly',true),
+    loadDeepLast(ST.mgrStore,'biweekly',true),
+    loadDeepLast(ST.mgrStore,'monthly',true),
+    loadDeepCurrent(ST.mgrStore,'weekly',true),
+    loadDeepCurrent(ST.mgrStore,'biweekly',true),
+    loadDeepCurrent(ST.mgrStore,'monthly',true)
+  ]).then(function(){
+    var types=[['weekly','Weekly'],['biweekly','Bi-weekly'],['monthly','Monthly']],html=managerStoreSeg();
+    types.forEach(function(pair){
+      var type=pair[0],label=pair[1];
+      var tasks=ST.tasks.filter(function(t){return taskVisibleForStore(t,ST.mgrStore)&&t.list_type===type;})
+        .sort(function(a,b){var sa=deepStatus(a,ST.mgrDeepDone),sb=deepStatus(b,ST.mgrDeepDone);return sa.rank!==sb.rank?sa.rank-sb.rank:(a.sort_order||0)-(b.sort_order||0);});
+      html+='<div class="card"><div class="card-hd"><span class="card-title">'+esc(label)+'</span><span class="pill pill-gray">'+tasks.length+'</span></div>';
+      if(!tasks.length)html+='<div class="muted-row">No '+esc(label.toLowerCase())+' tasks.</div>';
+      tasks.forEach(function(t){
+        var st=deepStatus(t,ST.mgrDeepDone),last=ST.deepLast[t.id],pill=st.key==='done'?'pill-green':(st.key==='overdue'?'pill-red':(st.key==='due'?'pill-amber':'pill-gray'));
+        html+='<div class="store-snapshot"><div><div class="snap-name">'+esc(t.task)+'</div><div class="snap-meta">'+esc(scheduleLabel(t)||label)+' · '+esc(last?('Last cleaned '+fmtDateTime(last.completed_at)+' by '+last.employee_name):'Never cleaned')+'</div></div><span class="pill '+pill+'">'+esc(st.label)+'</span></div>';
+      });
+      html+='</div>';
+    });
+    body.innerHTML=html;
+  }).catch(function(e){body.innerHTML='<div class="loading err">Could not load deep clean: '+esc(e.message)+'</div>';});
 }
 function renderManagerIssues(){
   var body=document.getElementById('mgrBody');if(!body)return;
@@ -1291,6 +1402,15 @@ function editTask(id){
     body+='<div class="ef-row"><div><label>Role</label><select id="eRole"><option'+(t&&t.role==='Barista'?' selected':'')+'>Barista</option><option'+(t&&t.role==='Kitchen'?' selected':'')+'>Kitchen</option></select></div>'
       +'<div><label>Shift</label><select id="eShift"><option'+(t&&t.shift==='AM'?' selected':'')+'>AM</option><option'+(t&&t.shift==='PM'?' selected':'')+'>PM</option></select></div></div>';
     body+='<label>Section</label><select id="eSec">'+secs.map(function(s){return '<option'+(t&&t.section===s?' selected':(!t&&s==='Opening'?' selected':''))+'>'+s+'</option>';}).join('')+'</select>';
+  }else{
+    var sg=t&&t.schedule_group?String(t.schedule_group):'';
+    if(ST.checkListType==='biweekly'){
+      body+='<label>Schedule</label><select id="eSchedule"><option value=""'+(!sg?' selected':'')+'>Every bi-week period</option><option value="A"'+(sg==='A'?' selected':'')+'>Week A</option><option value="B"'+(sg==='B'?' selected':'')+'>Week B</option></select>';
+    }else if(ST.checkListType==='monthly'){
+      body+='<label>Schedule</label><select id="eSchedule"><option value=""'+(!sg?' selected':'')+'>Every month</option><option value="1"'+(sg==='1'?' selected':'')+'>Week 1</option><option value="2"'+(sg==='2'?' selected':'')+'>Week 2</option><option value="3"'+(sg==='3'?' selected':'')+'>Week 3</option><option value="4"'+(sg==='4'?' selected':'')+'>Week 4</option></select>';
+    }else{
+      body+='<label>Schedule</label><select id="eSchedule"><option value=""'+(!sg?' selected':'')+'>Every week</option></select>';
+    }
   }
   document.getElementById('editBody').innerHTML=body;
   document.getElementById('editSave').setAttribute('onclick','saveTask()');
@@ -1306,7 +1426,11 @@ function saveTask(){
     body.role=document.getElementById('eRole').value;
     body.shift=document.getElementById('eShift').value;
     if(body.section==='Freetime'){body.shift=null;}
-  }else{body.role=null;body.shift=null;body.section='Deep Clean';}
+  }else{
+    body.role=null;body.shift=null;body.section='Deep Clean';
+    var sched=document.getElementById('eSchedule');
+    body.schedule_group=sched&&sched.value?sched.value:null;
+  }
   var url,method;
   if(ST._editTaskId){url='checklist_tasks?id=eq.'+ST._editTaskId;method='PATCH';}
   else{url='checklist_tasks';method='POST';body.sort_order=999;body.active=true;}
