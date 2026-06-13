@@ -48,7 +48,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .who-name{font-size:13px;font-weight:600;text-align:right}
 .who-store{font-size:11px;color:var(--muted);text-align:right}
 .switch-link{color:var(--accent);cursor:pointer}
-.tabpane{padding:18px}
+.tabpane{padding:18px;padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .h-title{font-size:20px;font-weight:600;margin-bottom:3px}
 .h-sub{font-size:13px;color:var(--muted);margin-bottom:16px}
 /* cards */
@@ -119,7 +119,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .nav-ic{font-size:21px;line-height:1}
 .nav-lb{font-size:10px;font-weight:500}
 /* submit bar */
-.subbar{position:fixed;bottom:64px;left:0;right:0;max-width:600px;margin:0 auto;background:var(--surface);border-top:1px solid var(--border);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:55}
+.subbar{position:fixed;bottom:calc(58px + env(safe-area-inset-bottom,0px));left:0;right:0;max-width:600px;margin:0 auto;background:var(--surface);border-top:1px solid var(--border);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:55}
 .sb-stats{display:flex;gap:16px}
 .sb-stat{text-align:center}
 .sb-num{font-size:18px;font-weight:600;line-height:1}
@@ -210,6 +210,12 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .iss-desc.done{color:var(--light);text-decoration:line-through}
 .iss-meta{font-size:12px;color:var(--muted);margin-top:3px}
 .iss-act{padding:7px 13px;border-radius:8px;border:1.5px solid var(--bd2);background:transparent;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.emp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+.emp-row:first-of-type{border-top:none}
+.emp-name{font-size:14px;font-weight:500}
+.emp-form{display:flex;gap:8px;margin-top:12px}
+.emp-form input{flex:1;min-width:0;padding:12px;font-size:16px;border:1.5px solid var(--bd2);border-radius:9px;font-family:inherit;background:var(--surface);color:var(--text)}
+.emp-form button{padding:12px 14px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
 
 
 </style></head><body>
@@ -1231,9 +1237,11 @@ function renderIssues(){
   c.innerHTML='<div class="h-title">Issues</div>'
     +'<div class="h-sub">'+esc(storeName(ST.store))+' · '+esc(ST.emp)+'</div>'
     +'<div id="issForm"></div>'
-    +'<div id="issList"><div class="loading">Loading…</div></div>';
+    +'<div id="issList"><div class="loading">Loading…</div></div>'
+    +'<div id="empAdmin"></div>';
   ISS.shift='AM';
   renderIssueForm();
+  renderEmployeeAdmin();
   loadIssues(ST.store).then(function(){issRenderList();});
 }
 
@@ -1309,6 +1317,52 @@ function issRenderList(){
     h+='</div>';
   }
   var el=document.getElementById('issList');if(el)el.innerHTML=h;
+}
+
+/* ============ EMPLOYEES — manager add/remove ============ */
+function renderEmployeeAdmin(msg,type){
+  var el=document.getElementById('empAdmin');if(!el)return;
+  var h='<div class="card"><div class="card-hd"><span class="card-title">Employees</span>'
+    +'<span class="pill pill-gray">'+ST.employees.length+'</span></div>';
+  if(ST.employees.length===0){
+    h+='<div class="muted-row">No active employees found.</div>';
+  } else {
+    ST.employees.forEach(function(n){
+      h+='<div class="emp-row"><span class="emp-name">'+esc(n)+'</span>'
+        +'<button class="iss-act" style="color:var(--accent)" onclick="removeEmployee(\''+escA(n)+'\')">Remove</button></div>';
+    });
+  }
+  h+='<div class="emp-form"><input id="empNewName" placeholder="New employee name" autocomplete="off">'
+    +'<button onclick="addEmployee()">Add</button></div>';
+  h+='<div class="status '+(type||'')+'" id="empSt"'+(msg?' style="display:block"':'')+'>'+esc(msg||'')+'</div></div>';
+  el.innerHTML=h;
+}
+function empSt(m,t){var e=document.getElementById('empSt');if(e){e.textContent=m;e.className='status '+t;}}
+function addEmployee(){
+  var input=document.getElementById('empNewName');
+  var name=(input&&input.value||'').trim().replace(/\s+/g,' ');
+  if(!name){empSt('Enter a name first.','err');return;}
+  if(ST.employees.some(function(n){return n.toLowerCase()===name.toLowerCase();})){
+    empSt(name+' is already active.','err');return;
+  }
+  empSt('Adding…','info');
+  sb('employees',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify([{name:name,active:true}])})
+    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
+    .then(function(){return loadEmployees();})
+    .then(function(){renderIdentity();renderIssueForm();renderEmployeeAdmin('Added '+name+'.','ok');})
+    .catch(function(err){empSt('Add failed: '+(err.message||err),'err');});
+}
+function removeEmployee(name){
+  if(!confirm('Remove '+name+' from active employees?'))return;
+  empSt('Removing…','info');
+  sb('employees?name=eq.'+encodeURIComponent(name),{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify({active:false})})
+    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
+    .then(function(){return loadEmployees();})
+    .then(function(){
+      renderIdentity();renderIssueForm();renderEmployeeAdmin('Removed '+name+'.','ok');
+      if(ST.emp===name){forgetMe();notMe();}
+    })
+    .catch(function(err){empSt('Remove failed: '+(err.message||err),'err');});
 }
 function resolveIssue(id){
   sb('issues?id=eq.'+id,{method:'PATCH',headers:hdr({'Prefer':'return=minimal'}),
