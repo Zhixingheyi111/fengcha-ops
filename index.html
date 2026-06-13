@@ -195,6 +195,21 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 .sr-role{font-size:13px;font-weight:500;color:var(--text)}
 .sr-pills{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
 .sr-pills .pill{font-size:10px;padding:3px 8px}
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:8px}
+.action-card{border:1.5px solid var(--border);border-radius:11px;background:var(--surface);padding:12px;cursor:pointer}
+.action-card.red{background:var(--acc-bg);border-color:#EFC0B0}
+.action-card.amber{background:var(--amber-bg);border-color:#E8C78E}
+.action-card.green{background:var(--green-bg);border-color:#BFE3D2}
+.action-card.gray{background:var(--surface)}
+.action-top{font-size:19px;font-weight:600;color:var(--text)}
+.action-card.red .action-top{color:var(--accent)}
+.action-card.amber .action-top{color:var(--amber-tx)}
+.action-card.green .action-top{color:var(--green-tx)}
+.action-lb{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.25}
+.store-snapshot{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 0;border-top:1px solid var(--border)}
+.store-snapshot:first-of-type{border-top:none}
+.snap-name{font-size:13px;font-weight:600}
+.snap-meta{font-size:11px;color:var(--muted);margin-top:1px}
 .uni-sr-pick{display:flex;gap:10px;margin:10px 0 4px}
 .uni-sr-group{flex:1}
 .uni-sr-label{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
@@ -473,7 +488,7 @@ function saveChecklistReport(store,dateKey,sentBy,emailTo){
 }
 
 /* ---------- DASHBOARD aggregation (both stores) ---------- */
-/* Returns: {orders:{Heights:[{name,qty}],SP:...|null}, shifts:{...}} */
+/* Returns: {orders:{Heights:[{name,qty}],SP:...|null}, shifts:{...}, deep:{...}} */
 function buildDashboard(){
   /* refresh tasks first so totals are always accurate */
   return loadTasks().then(function(){return buildDashboardInner();});
@@ -483,11 +498,12 @@ function buildDashboardInner(){
   /* out.orders[store] = list|null
      out.shifts[store][shift] = { roles: { Barista:{...}, Kitchen:{...} } }
        each role: {checklist:{done,total,who}|null} */
-  var out={orders:{},shifts:{}};
-  stores.forEach(function(s){out.shifts[s]={AM:{roles:{}},PM:{roles:{}}};});
+  var out={orders:{},shifts:{},deep:{}};
+  stores.forEach(function(s){out.shifts[s]={AM:{roles:{}},PM:{roles:{}}};out.deep[s]={};});
   var jobs=[];
   var pkDaily=periodKey('daily');
   var roles=['Barista','Kitchen'], shifts=['AM','PM'];
+  var deepTypes=['weekly','biweekly','monthly'];
 
   /* ORDERS: from last submitted DAILY count per store */
   stores.forEach(function(s){
@@ -528,6 +544,24 @@ function buildDashboardInner(){
         });
       }).catch(function(){})
     );
+  });
+
+  stores.forEach(function(s){
+    deepTypes.forEach(function(type){
+      var pk=periodKey(type);
+      jobs.push(
+        sb('checklist_completions?select=task_id,employee_name&store=eq.'+encodeURIComponent(s)
+            +'&list_type=eq.'+type+'&period_key=eq.'+encodeURIComponent(pk))
+        .then(function(r){return r.json();})
+        .then(function(comps){
+          comps=Array.isArray(comps)?comps:[];
+          var doneIds={};comps.forEach(function(c){doneIds[c.task_id]=1;});
+          var ts=ST.tasks.filter(function(t){return taskVisibleForStore(t,s)&&t.list_type===type;});
+          var done=0;ts.forEach(function(t){if(doneIds[t.id])done++;});
+          out.deep[s][type]={done:done,total:ts.length};
+        }).catch(function(){out.deep[s][type]={done:0,total:0};})
+      );
+    });
   });
 
   return Promise.all(jobs).then(function(){return out;});
@@ -721,63 +755,106 @@ function renderHome(firstLoad){
   });
 }
 function renderDashBody(d){
-  var html='';
-
-  /* ORDERS (top, two-up) */
-  html+='<div class="dash-sec-lbl">To order</div>';
-  html+='<div class="dash-order-grid">';
-  ['Heights','SP'].forEach(function(s){
-    var ord=d.orders[s];
-    if(ord===null){
-      html+='<div class="ord-card gray"><div class="ord-card-top">no count</div><div class="ord-card-sub">'+esc(storeName(s))+' yet</div></div>';
-    } else if(ord.length===0){
-      html+='<div class="ord-card green"><div class="ord-card-top">stocked</div><div class="ord-card-sub">'+esc(storeName(s))+'</div></div>';
-    } else {
-      html+='<div class="ord-card red" onclick="dashOrderDetail(\''+s+'\')"><div class="ord-card-top">'+ord.length+'</div><div class="ord-card-sub">'+esc(storeName(s))+' items \u203a</div></div>';
-    }
-  });
-  html+='</div>';
-  /* expandable order detail */
-  html+='<div id="dashOrderDetail"></div>';
-  /* stash orders for the detail toggle */
+  var html='',primary=ST.store||'Heights',other=primary==='Heights'?'SP':'Heights';
   DASH_ORDERS=d.orders;
 
-  /* SHIFT BLOCKS: store -> shift -> roles */
-  ['Heights','SP'].forEach(function(s){
-    ['AM','PM'].forEach(function(shift){
-      var block=d.shifts[s][shift];
-      var roles=block?block.roles:{};
-      var roleKeys=Object.keys(roles);
-      html+='<div class="dash-sec-lbl">'+esc(storeName(s))+' \u00b7 '+shift+'</div>';
-      html+='<div class="card" style="padding:4px 12px">';
-      if(roleKeys.length===0){
-        html+='<div class="shift-empty">No activity yet this shift.</div>';
-      } else {
-        roleKeys.forEach(function(role){
-          var r=roles[role];
-          /* checklist pill */
-          var ckPill='';
-          if(r.checklist){
-            var c=r.checklist;
-            if(c.done===0)ckPill='<span class="pill pill-red">list 0/'+c.total+'</span>';
-            else if(c.done>=c.total)ckPill='<span class="pill pill-green">list \u2713</span>';
-            else ckPill='<span class="pill pill-amber">list '+c.done+'/'+c.total+'</span>';
-          }
-          var who=(r.checklist&&r.checklist.who) || '';
-          html+='<div class="shift-role">';
-          html+='<div class="sr-left"><div class="sr-role">'+esc(role)+(who?' \u00b7 '+esc(who):'')+'</div></div>';
-          html+='<div class="sr-pills">'+ckPill+'</div>';
-          html+='</div>';
-        });
-      }
-      html+='</div>';
-    });
-  });
+  html+='<div class="dash-sec-lbl">Needs attention</div>';
+  html+='<div class="action-grid">';
+  html+=dashOrderAction(primary,d.orders[primary]);
+  html+=dashChecklistAction(primary,d);
+  html+=dashDeepAction(primary,d.deep[primary]);
+  html+=dashOtherAction(other,d);
+  html+='</div><div id="dashOrderDetail"></div>';
+
+  html+='<div class="dash-sec-lbl">'+esc(storeName(primary))+' today</div>';
+  html+='<div class="card" style="padding:4px 12px">';
+  html+=dashShiftRows(primary,'AM',d.shifts[primary].AM);
+  html+=dashShiftRows(primary,'PM',d.shifts[primary].PM);
+  html+='</div>';
+
+  html+='<div class="dash-sec-lbl">Deep clean</div>';
+  html+='<div class="card" style="padding:4px 12px">'+dashDeepRows(primary,d.deep[primary])+'</div>';
+
+  html+='<div class="dash-sec-lbl">Other store</div>';
+  html+='<div class="card" style="padding:4px 12px">'+dashStoreSnapshot(other,d)+'</div>';
 
   var body=document.getElementById('dashBody');
   if(body)body.innerHTML=html;
 }
 var DASH_ORDERS={};
+function dashOrderAction(store,ord){
+  if(ord===null)return '<div class="action-card gray" onclick="setTab(\'inv\')"><div class="action-top">No count</div><div class="action-lb">'+esc(storeName(store))+' inventory</div></div>';
+  if(ord.length===0)return '<div class="action-card green" onclick="setTab(\'inv\')"><div class="action-top">Stocked</div><div class="action-lb">'+esc(storeName(store))+' inventory</div></div>';
+  return '<div class="action-card red" onclick="dashOrderDetail(\''+store+'\')"><div class="action-top">'+ord.length+'</div><div class="action-lb">'+esc(storeName(store))+' items to order</div></div>';
+}
+function dashChecklistAction(store,d){
+  var worst=null;
+  ['AM','PM'].forEach(function(shift){
+    ['Barista','Kitchen'].forEach(function(role){
+      var r=d.shifts[store][shift].roles[role],c=r&&r.checklist;
+      if(!c||c.total===0||c.done>=c.total)return;
+      var miss=c.total-c.done,item={shift:shift,role:role,done:c.done,total:c.total,miss:miss};
+      if(!worst||miss>worst.miss)worst=item;
+    });
+  });
+  if(!worst)return '<div class="action-card green" onclick="homeGoChecklist(\'daily\',\'AM\',\'Barista\')"><div class="action-top">Lists done</div><div class="action-lb">'+esc(storeName(store))+' daily checklist</div></div>';
+  return '<div class="action-card red" onclick="homeGoChecklist(\'daily\',\''+worst.shift+'\',\''+worst.role+'\')"><div class="action-top">'+worst.done+'/'+worst.total+'</div><div class="action-lb">'+worst.shift+' '+worst.role+' checklist</div></div>';
+}
+function dashDeepAction(store,deep){
+  var labels={weekly:'Weekly',biweekly:'Bi-weekly',monthly:'Monthly'},pick=null;
+  ['weekly','biweekly','monthly'].forEach(function(type){
+    var x=deep&&deep[type];if(!x||x.total===0||x.done>=x.total)return;
+    var miss=x.total-x.done,item={type:type,label:labels[type],done:x.done,total:x.total,miss:miss};
+    if(!pick||miss>pick.miss)pick=item;
+  });
+  if(!pick)return '<div class="action-card green" onclick="homeGoChecklist(\'weekly\')"><div class="action-top">Clean done</div><div class="action-lb">Recurring deep clean</div></div>';
+  return '<div class="action-card amber" onclick="homeGoChecklist(\''+pick.type+'\')"><div class="action-top">'+pick.done+'/'+pick.total+'</div><div class="action-lb">'+pick.label+' deep clean</div></div>';
+}
+function dashOtherAction(store,d){
+  var open=dashOpenCount(store,d),ord=d.orders[store],n=(ord&&ord.length)||0;
+  var cls=(open||n)?'amber':'green',top=(open||n)?(open+n):'OK';
+  return '<div class="action-card '+cls+'" onclick="dashSwitchStore(\''+store+'\')"><div class="action-top">'+top+'</div><div class="action-lb">'+esc(storeName(store))+' attention</div></div>';
+}
+function dashShiftRows(store,shift,block){
+  var roles=block?block.roles:{},h='<div class="store-snapshot"><div><div class="snap-name">'+shift+' '+(shift==='AM'?'Opening':'Closing')+'</div><div class="snap-meta">'+esc(storeName(store))+'</div></div><div class="sr-pills">';
+  ['Barista','Kitchen'].forEach(function(role){
+    var r=roles[role],c=r&&r.checklist,cls='pill-gray',txt=role+' -';
+    if(c){txt=role+' '+c.done+'/'+c.total;cls=c.done===0?'pill-red':(c.done>=c.total?'pill-green':'pill-amber');}
+    h+='<span class="pill '+cls+'" onclick="homeGoChecklist(\'daily\',\''+shift+'\',\''+role+'\')">'+esc(txt)+'</span>';
+  });
+  return h+'</div></div>';
+}
+function dashDeepRows(store,deep){
+  var labels={weekly:'Weekly',biweekly:'Bi-weekly',monthly:'Monthly'},h='';
+  ['weekly','biweekly','monthly'].forEach(function(type){
+    var x=deep&&deep[type],cls='pill-gray',txt='No tasks';
+    if(x&&x.total){txt=x.done+'/'+x.total;cls=x.done===0?'pill-red':(x.done>=x.total?'pill-green':'pill-amber');}
+    h+='<div class="store-snapshot" onclick="homeGoChecklist(\''+type+'\')"><div><div class="snap-name">'+labels[type]+'</div><div class="snap-meta">'+esc(storeName(store))+'</div></div><span class="pill '+cls+'">'+txt+'</span></div>';
+  });
+  return h;
+}
+function dashStoreSnapshot(store,d){
+  var ord=d.orders[store],open=dashOpenCount(store,d),deep=dashDeepOpen(store,d.deep[store]);
+  var invTxt=ord===null?'no count':(ord.length?ord.length+' order':'stocked');
+  return '<div class="store-snapshot"><div><div class="snap-name">'+esc(storeName(store))+'</div><div class="snap-meta">Inventory '+esc(invTxt)+' · Daily '+open+' open · Deep '+deep+' open</div></div><button class="iss-act" onclick="dashSwitchStore(\''+store+'\')">View</button></div>';
+}
+function dashOpenCount(store,d){
+  var n=0;['AM','PM'].forEach(function(shift){['Barista','Kitchen'].forEach(function(role){var r=d.shifts[store][shift].roles[role],c=r&&r.checklist;if(c&&c.total>c.done)n+=c.total-c.done;});});
+  return n;
+}
+function dashDeepOpen(store,deep){
+  var n=0;['weekly','biweekly','monthly'].forEach(function(type){var x=deep&&deep[type];if(x&&x.total>x.done)n+=x.total-x.done;});
+  return n;
+}
+function homeGoChecklist(type,shift,role){
+  ST.checkListType=type||'daily';
+  if(shift)ST.checkShift=shift;
+  if(role)ST.checkRole=role;
+  setTab('check');
+}
+function dashSwitchStore(store){
+  ST.store=store;rememberMe();renderTopbar();renderHome(true);
+}
 function dashOrderDetail(store){
   var el=document.getElementById('dashOrderDetail');if(!el)return;
   if(el._open===store){el.innerHTML='';el._open=null;return;}
@@ -1045,7 +1122,13 @@ function renderManager(){
   else renderManagerEmployees();
 }
 function mgrSection(s){ST.mgrSection=s;renderManager();}
-function mgrStore(s){ST.mgrStore=s;renderManagerHistory();}
+function managerStoreSeg(){
+  return '<div class="seg"><button class="seg-btn'+(ST.mgrStore==='Heights'?' on':'')+'" onclick="mgrStore(\'Heights\')">Heights</button><button class="seg-btn'+(ST.mgrStore==='SP'?' on':'')+'" onclick="mgrStore(\'SP\')">Spring Branch</button></div>';
+}
+function mgrStore(s){
+  ST.mgrStore=s;
+  renderManager();
+}
 function mgrMonth(delta){
   var p=ST.mgrMonth.split('-'),d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,1);
   d.setMonth(d.getMonth()+delta);ST.mgrMonth=monthKey(d);renderManagerHistory();
@@ -1058,14 +1141,14 @@ function renderManagerHistory(){
   var gridStart=addDays(first,-first.getDay());
   var gridEnd=addDays(gridStart,41);
   var fromKey=dateKey(gridStart),toKey=dateKey(gridEnd);
-  body.innerHTML='<div class="seg"><button class="seg-btn'+(ST.mgrStore==='Heights'?' on':'')+'" onclick="mgrStore(\'Heights\')">Heights</button><button class="seg-btn'+(ST.mgrStore==='SP'?' on':'')+'" onclick="mgrStore(\'SP\')">Spring Branch</button></div>'
+  body.innerHTML=managerStoreSeg()
     +'<div class="card"><div class="loading">Loading calendar…</div></div>';
   Promise.all([loadDailyCompletionsRange(ST.mgrStore,fromKey,toKey),loadDailyCompletions(ST.mgrStore,ST.mgrDate),loadChecklistReport(ST.mgrStore,ST.mgrDate)])
     .then(function(res){
       var rows=res[0],selectedRows=res[1],report=res[2],byDate={};
       rows.forEach(function(r){(byDate[r.period_key]=byDate[r.period_key]||[]).push(r);});
       var monthLabel=monthDate.toLocaleDateString('en-US',{month:'long',year:'numeric'});
-      var html='<div class="seg"><button class="seg-btn'+(ST.mgrStore==='Heights'?' on':'')+'" onclick="mgrStore(\'Heights\')">Heights</button><button class="seg-btn'+(ST.mgrStore==='SP'?' on':'')+'" onclick="mgrStore(\'SP\')">Spring Branch</button></div>';
+      var html=managerStoreSeg();
       html+='<div class="card"><div class="mgr-cal-head"><button class="mgr-arrow" onclick="mgrMonth(-1)">‹</button><div class="mgr-month">'+esc(monthLabel)+'</div><button class="mgr-arrow" onclick="mgrMonth(1)">›</button></div>';
       html+='<div class="mgr-cal">';
       ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d){html+='<div class="mgr-dow">'+d+'</div>';});
@@ -1104,7 +1187,7 @@ function managerSummaryCard(sum,report){
 }
 function renderManagerIssues(){
   var body=document.getElementById('mgrBody');if(!body)return;
-  body.innerHTML='<div id="mgrIssueForm"></div><div id="mgrIssueList"><div class="loading">Loading…</div></div>';
+  body.innerHTML=managerStoreSeg()+'<div id="mgrIssueForm"></div><div id="mgrIssueList"><div class="loading">Loading…</div></div>';
   ISS.shift='AM';renderIssueForm('mgrIssueForm','mgrIssSt');
   loadIssues(ST.mgrStore).then(function(){issRenderList('mgrIssueList');});
 }
