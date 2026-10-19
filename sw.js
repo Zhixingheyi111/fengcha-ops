@@ -1,7 +1,7 @@
 /* Feng Cha Ops — service worker (network-first for app, so updates reach phones) */
 /* Bump CACHE version whenever you want to force-clear old caches. */
 
-var CACHE = 'fengcha-ops-v14';
+var CACHE = 'fengcha-ops-v15';
 var SHELL = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(e){
@@ -20,6 +20,7 @@ self.addEventListener('activate', function(e){
 
 self.addEventListener('fetch', function(e){
   var url = e.request.url;
+  if(e.request.method!=='GET' || new URL(url).pathname.indexOf('/api/')===0)return;
   /* Never touch Supabase / EmailJS / CDN / fonts — always live network */
   if(url.indexOf('supabase.co')>-1 || url.indexOf('emailjs')>-1 || url.indexOf('cdn.')>-1 || url.indexOf('fonts.')>-1){
     return;

@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Feng Cha">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
 <style>
 
 
@@ -305,10 +305,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--bg);color:v
 var SUPABASE_URL='https://oxxiqgyaoztrrtquxobv.supabase.co';
 var SUPABASE_KEY='sb_publishable_LkKdloJD8LMs4iOOSXO6iw_5QRnS8Td';
 
-/* EmailJS (inventory order report = the recap) */
-var EMAILJS_PUBLIC='o4QceItw_cy9DQgQ5';
-var EMAILJS_SVC='service_p893qdk';
-var EMAILJS_TPL='template_aplgvah';      /* Heights/SP template */
+/* Reports are sent by the server; no mail credentials in the browser. */
 var OWNER_EMAIL='fengchaspringbranch@gmail.com';
 var BIW_SHEET_URL='https://docs.google.com/spreadsheets/d/10WrpioWY-fvcV-B95xFP8fp9HGGeUgP49TX4HTuJKpc/edit?gid=0#gid=0';
 var BIW_SHEET_WEBHOOK_URL=''; /* Paste deployed Google Apps Script web app URL here. */
@@ -326,6 +323,9 @@ var ST={
   invItems:{daily:[],biw:[]},
   tasks:[],
   /* working sets */
+  invBusy:false,
+  invDraftKey:null,
+  invOutbox:[],
   invMode:'daily',
   invCounts:{},        /* itemName -> value (current entry) */
   invLast:{Heights:{daily:{},biw:{}},SP:{daily:{},biw:{}}},
@@ -675,6 +675,7 @@ function closingCompleteForStore(store){
 }
 function managerEmailBody(sum){
   var N='\n',BAR='===============================================',DASH='-----------------------------------------------';
+  items.forEach(function(it){if(cats.indexOf(it.cat)<0)cats=cats.concat([it.cat]);});
   var msg=BAR+N+'  FENG CHA '+storeName(sum.store).toUpperCase()+' — DAILY CHECKLIST SUMMARY'+N+'  '+fmtDateKey(sum.dateKey)+N+BAR+N+N;
   msg+='Overall: '+sum.done+' of '+sum.total+' complete'+N+N;
   msg+='BY SHIFT / ROLE'+N+DASH+N;
@@ -698,30 +699,28 @@ function managerEmailBody(sum){
   msg+=N+BAR+N+'Sent via Feng Cha Ops App'+N;
   return msg;
 }
+function sendReport(report){
+  return fetch('/api/send-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)})
+    .then(function(r){return r.json().then(function(d){if(!r.ok||!d.ok)throw new Error(d.error||'Email delivery unavailable.');return d;});});
+}
+var summarySending={};
 function trySendDailyChecklistSummary(){
   if(ST.checkListType!=='daily' || ST.checkShift!=='PM' || !ST.store)return;
   if(!closingCompleteForStore(ST.store))return;
-  var dk=periodKey('daily'),store=ST.store;
+  var dk=periodKey('daily'),store=ST.store,employee=ST.emp,key=store+'-'+dk;
+  if(summarySending[key])return;
+  summarySending[key]=true;
   loadChecklistReport(store,dk).then(function(existing){
     if(existing)return;
     return loadDailyCompletions(store,dk).then(function(rows){
       var sum=summarizeDaily(store,dk,rows);
-      var body=managerEmailBody(sum);
-      var date=fmtDateKey(dk);
-      return saveChecklistReport(store,dk,ST.emp,OWNER_EMAIL).then(function(r){
-        if(!r.ok)return;
-        try{emailjs.init({publicKey:EMAILJS_PUBLIC});}catch(e){}
-        return emailjs.send(EMAILJS_SVC,EMAILJS_TPL,{
-          to_email:OWNER_EMAIL,
-          subject:'[Feng Cha '+storeName(store)+'] Daily checklist summary - '+date,
-          name:storeName(store)+' Store',
-          email:OWNER_EMAIL,
-          time:date,
-          message:body
-        });
-      });
+      return sendReport({id:'checklist-'+key,store:store,subject:'Daily checklist summary - '+dk,message:managerEmailBody(sum)})
+        .then(function(){return saveChecklistReport(store,dk,employee,OWNER_EMAIL).then(function(r){if(!r.ok)throw new Error('Email sent; report log unavailable.');});});
     });
-  }).catch(function(){});
+  }).catch(function(){
+    var el=document.getElementById('ckList');
+    if(el){var note=document.getElementById('ckMailWarning');if(!note){note=document.createElement('div');note.id='ckMailWarning';el.appendChild(note);}note.className='status err';note.textContent='Checklist saved. Summary email not confirmed; contact your manager.';}
+  }).then(function(){delete summarySending[key];});
 }
 
 
@@ -924,6 +923,7 @@ var INV_CATS={daily:['Fruit','Drink','Kitchen','Cake','Supplies'],
   biw:['Packaging','Creamer/Powder','Cup/Lid/Straw','Cutlery/Napkin','Syrup','Tea/Coffee','Toppings','Desserts','Smallwares']};
 
 function renderInv(){
+  invLoadDraft();
   var c=document.getElementById('tab-inv');
   c.innerHTML='<div class="h-title">Inventory</div>'
     +'<div class="h-sub">'+esc(storeName(ST.store))+' \u00b7 '+esc(ST.emp)+'</div>'
@@ -932,19 +932,44 @@ function renderInv(){
     +(ST.invMode==='biw'?'<a class="sheet-link" href="'+escA(BIW_SHEET_URL)+'" target="_blank" rel="noopener">Open bi-weekly Google Sheet <span>Counts sync to C/D</span></a>':'')
     +'<div class="inv-head"><span>Item</span><span class="ih-c">Last</span><span class="ih-c">Now</span><span class="ih-c">Min</span></div>'
     +'<div id="invList"></div>'
-    +'<div class="status" id="invSt"></div>';
+    +'<div id="invOutbox"></div><div class="status" id="invSt"></div>';
+  invRenderOutbox();
   loadInvLast(ST.store).then(function(){invRenderList();});
 }
-function invMode(m){ST.invMode=m;ST.invCounts={};renderInv();}
+function invMode(m){invSaveDraft();ST.invMode=m;renderInv();}
 function invItems(){return ST.invItems[ST.invMode]||[];}
 function invGV(it){var v=ST.invCounts[it.name];return (v!==undefined&&v!=='')?v:'';}
 function invLow(it){var v=invGV(it);return v!==''&&parseFloat(v)<it.min;}
 function invOQ(it){var v=invGV(it);return v!==''?Math.max(0,it.min-parseFloat(v)):0;}
 function invLastV(it){var L=ST.invLast[ST.store][ST.invMode];var v=L?L[it.name]:undefined;return (v!==undefined&&v!=='')?v:'';}
 function invSafe(n){return n.replace(/[^a-zA-Z0-9]/g,'_');}
+function invStorageKey(){return 'fc_inventory_v2:'+encodeURIComponent(ST.emp||'')+':'+ST.store+':'+ST.invMode;}
+function invReadDraft(key){
+  try{var d=JSON.parse(localStorage.getItem(key)||'null');if(d&&d.counts&&Array.isArray(d.outbox))return d;}catch(e){}
+  return {counts:{},outbox:[]};
+}
+function invSaveDraft(){
+  if(!ST.invDraftKey)return;
+  var d={counts:ST.invCounts,outbox:ST.invOutbox};
+  invDraftMemory[ST.invDraftKey]=d;
+  try{localStorage.setItem(ST.invDraftKey,JSON.stringify(d));}catch(e){invSt('Draft stays on this screen only. Browser storage unavailable; keep the app open.','err');}
+}
+var invDraftMemory={};
+function invLoadDraft(){
+  var key=invStorageKey();
+  if(ST.invDraftKey===key)return;
+  invSaveDraft();
+  var d=invDraftMemory[key]||invReadDraft(key);
+  ST.invDraftKey=key;ST.invCounts=d.counts;ST.invOutbox=d.outbox;
+}
+function invRenderOutbox(){
+  var el=document.getElementById('invOutbox');if(!el)return;
+  el.innerHTML=ST.invOutbox.length?'<div class="status err">Inventory saved. '+ST.invOutbox.length+' report(s) awaiting email for '+esc(storeName(ST.store))+'.</div><button class="add-btn" onclick="invRetryEmails()"'+(ST.invBusy?' disabled':'')+'>Retry unsent emails (no inventory resubmission)</button>':'';
+}
 function invResetSubmit(){
   var btn=document.getElementById('submitBtn');
-  if(btn){btn.disabled=false;btn.textContent='Submit & email';}
+  if(btn){btn.disabled=ST.invBusy;btn.textContent=ST.invBusy?'Working…':'Save inventory & email';}
+  Array.prototype.forEach.call(document.querySelectorAll('.inv-inp'),function(inp){inp.disabled=ST.invBusy;});
 }
 
 function invRenderList(){
@@ -990,6 +1015,7 @@ function invSet(name,val){
     var low=invLow(it),has=invGV(it)!=='';
     if(row)row.className='inv-row'+(low?' low':(has?' good':''));
     if(inp)inp.className='inv-inp'+(low?' low':(has?' good':''));}
+  invSaveDraft();
   invResetSubmit();
   invUpdateBar();
 }
@@ -1012,6 +1038,7 @@ function invEmailBody(){
   var counted=[],toOrder=[];
   items.forEach(function(it){if(invGV(it)!==''){counted.push(it);if(invLow(it))toOrder.push(it);}});
   function grp(a){var r={};a.forEach(function(i){(r[i.cat]=r[i.cat]||[]).push(i);});return r;}
+  items.forEach(function(it){if(cats.indexOf(it.cat)<0)cats=cats.concat([it.cat]);});
   var msg=BAR+N+'  FENG CHA '+ST.store.toUpperCase()+' \u2014 '+label+' INVENTORY'+N+'  '+date+N+BAR+N+N;
   if(toOrder.length){
     msg+='[!] ITEMS TO ORDER ('+toOrder.length+')'+N+DASH+N;
@@ -1039,36 +1066,63 @@ function biwSheetRows(){
     return {item_name:it.name,count:parseFloat(invGV(it)),category:it.cat||'',unit:it.unit||'',source:it.src||''};
   });
 }
-function syncBiweeklySheet(){
-  if(ST.invMode!=='biw')return Promise.resolve({skipped:true});
+function syncBiweeklySheet(snapshot){
+  if(snapshot.mode!=='biw')return Promise.resolve({skipped:true});
   var hook=ST.biwSheetWebhookUrl||BIW_SHEET_WEBHOOK_URL;
-  if(!hook)return Promise.resolve({skipped:true,reason:'not_configured'});
-  return fetch(hook,{
-    method:'POST',
-    mode:'no-cors',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({store:ST.store,date_key:periodKey('biweekly'),employee_name:ST.emp,rows:biwSheetRows()})
-  }).then(function(){return {ok:true};});
+  if(!hook)return Promise.resolve({skipped:true});
+  return fetch(hook,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({store:snapshot.store,date_key:snapshot.period,employee_name:snapshot.employee,rows:snapshot.sheetRows})});
+}
+function invFinishBusy(){ST.invBusy=false;invResetSubmit();invRenderOutbox();}
+function invDeliverPending(key,report){
+  return sendReport(report).then(function(){
+    var d=invDraftMemory[key]||invReadDraft(key);
+    d.outbox=d.outbox.filter(function(x){return x.id!==report.id;});
+    invDraftMemory[key]=d;
+    if(ST.invDraftKey===key)ST.invOutbox=d.outbox;
+    try{localStorage.setItem(key,JSON.stringify(d));}catch(e){}
+  });
+}
+function invRetryEmails(){
+  if(ST.invBusy||!ST.invOutbox.length)return;
+  ST.invBusy=true;invResetSubmit();invRenderOutbox();
+  var key=ST.invDraftKey,reports=ST.invOutbox.slice(),chain=Promise.resolve();
+  invSt('Retrying saved reports; inventory will not be saved again.','info');
+  reports.forEach(function(report){chain=chain.then(function(){return invDeliverPending(key,report);});});
+  chain.then(function(){if(key===ST.invDraftKey)invSt('Saved report emails sent.','ok');})
+    .catch(function(e){if(key===ST.invDraftKey)invSt('Inventory remains saved. Email not confirmed: '+e.message,'err');}).then(invFinishBusy);
 }
 function invSubmit(){
-  try{emailjs.init({publicKey:EMAILJS_PUBLIC});}catch(e){}
-  var items=invItems(),pk=periodKey(ST.invMode==='daily'?'daily':'biweekly'),rows=[];
-  items.forEach(function(it){if(invGV(it)!=='')rows.push({store:ST.store,mode:ST.invMode,item_name:it.name,count:parseFloat(invGV(it)),period_key:pk,employee_name:ST.emp});});
-  if(rows.length===0){invSt('Enter at least one count first.','err');return;}
-  var btn=document.getElementById('submitBtn');btn.disabled=true;btn.textContent='Sending\u2026';
-  invSt('Saving counts and emailing order report\u2026','info');
-  var body=invEmailBody(),date=(new Date()).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  if(ST.invBusy)return;
+  invLoadDraft();
+  var key=ST.invDraftKey,store=ST.store,mode=ST.invMode,employee=ST.emp;
+  var pk=periodKey(mode==='daily'?'daily':'biweekly'),rows=[],invalid=false;
+  invItems().forEach(function(it){if(invGV(it)!==''){
+    var count=Number(invGV(it));if(!isFinite(count)||count<0)invalid=true;
+    rows.push({store:store,mode:mode,item_name:it.name,count:count,period_key:pk,employee_name:employee});
+  }});
+  if(invalid){invSt('Counts must be valid numbers of zero or more.','err');return;}
+  if(!rows.length){invSt('Enter at least one count first.','err');return;}
+  var report={id:'inventory-'+store+'-'+mode+'-'+new Date().getTime()+'-'+Math.random().toString(36).slice(2,10),store:store,
+    subject:(mode==='daily'?'DAILY':'BI-WEEKLY')+' Inventory - '+new Date().toLocaleDateString('en-US'),message:invEmailBody()};
+  var sheet={store:store,mode:mode,period:pk,employee:employee,sheetRows:biwSheetRows()};
+  ST.invBusy=true;invResetSubmit();invRenderOutbox();invSt('Saving inventory…','info');
+  var saved=false;
   sb('inventory_counts',{method:'POST',headers:hdr({'Prefer':'return=minimal'}),body:JSON.stringify(rows)})
-    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t);});})
-    .then(function(){return emailjs.send(EMAILJS_SVC,EMAILJS_TPL,{to_email:OWNER_EMAIL,subject:'[Feng Cha '+ST.store+' '+(ST.invMode==='daily'?'DAILY':'BI-WEEKLY')+'] Inventory - '+date,name:ST.store+' Store',email:OWNER_EMAIL,time:date,message:body});})
-    .then(function(){return syncBiweeklySheet();})
-    .then(function(sheet){
-      var msg='Sent! Order report emailed and counts saved.';
-      if(ST.invMode==='biw')msg+=sheet&&sheet.reason==='not_configured'?' Google Sheet link is ready; sheet sync needs webhook setup.':' Google Sheet sync started.';
-      invSt(msg,'ok');btn.textContent='Sent \u2713';ST.invCounts={};loadInvLast(ST.store).then(function(){invRenderList();setTimeout(invResetSubmit,1200);});
-    })
-    .catch(function(err){invSt('Failed: '+(err.text||err.message||err),'err');btn.disabled=false;btn.textContent='Submit & email';});
+    .then(function(r){if(!r.ok)throw new Error('Inventory save rejected ('+r.status+').');
+      saved=true;
+      var d=invDraftMemory[key]||invReadDraft(key);
+      d.counts={};d.outbox.push(report);invDraftMemory[key]=d;
+      if(ST.invDraftKey===key){ST.invCounts=d.counts;ST.invOutbox=d.outbox;invSaveDraft();invRenderList();invRenderOutbox();invSt('Inventory saved. Sending email…','info');}
+      else try{localStorage.setItem(key,JSON.stringify(d));}catch(e){}
+      /* Sheet sync is independent of email delivery; opaque responses cannot confirm writes. */
+      syncBiweeklySheet(sheet).catch(function(){});
+      return invDeliverPending(key,report);
+    }).then(function(){if(ST.invDraftKey===key){invSt('Inventory saved. Report emailed for '+storeName(store)+'.'+(mode==='biw'?' Google Sheet sync is not confirmed; check the sheet.':''),'ok');return loadInvLast(store).then(function(){if(ST.invDraftKey===key)invRenderList();});}})
+    .catch(function(err){if(ST.invDraftKey===key)invSt(saved?'Inventory saved. Email not confirmed: '+err.message+'. Use Retry unsent emails; do not resubmit the counts.':'Inventory save not confirmed: '+err.message+'. Your draft is kept. Check with your manager before retrying.','err');})
+    .then(invFinishBusy);
 }
+
 function invSt(m,t){var e=document.getElementById('invSt');if(e){e.textContent=m;e.className='status '+t;}}
 
 /* ============ CHECKLISTS ============ */

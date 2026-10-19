@@ -10,7 +10,13 @@ This repository is a static Feng Cha operations PWA deployed on Vercel.
 - `vercel.json` configures clean URLs and no-cache headers for `index.html` and `sw.js`.
 - `google-sheet-biweekly-sync.gs` is a Google Apps Script web app used by the bi-weekly inventory sync.
 
-There is no package manager or build step in this repo.
+There is no package manager or frontend build step in this repo.
+
+- `api/send-report.js` is a Vercel Node function forwarding reports to a token-protected Google Apps Script mail relay.
+- `google-gmail-report-relay.gs` is the separate mail relay (not the Sheet sync project).
+- `EMAIL-RELAY-SETUP.md` records the required owner authorization and setup boundary.
+- Run `node --test tests/inventory.test.cjs` for inventory/email regression checks.
+- A plain Python static server cannot execute `/api/send-report`; use mocks for local submit tests. Never test fake counts against production.
 
 ## How to validate changes
 
