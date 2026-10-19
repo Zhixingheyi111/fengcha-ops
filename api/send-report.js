@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
       body:JSON.stringify({token:token,id:body.id,store:body.store,subject:body.subject,message:body.message})});
     if (!reply.ok) throw new Error('Relay unavailable');
     const data = await reply.json();
-    if (!data.ok) return res.status(502).json({ok:false,error:data.code === 'QUOTA' ? 'Gmail sending limit reached. Retry this saved report later.' : data.code === 'RATE_LIMIT' ? 'Store report limit reached. Retry later or contact your manager.' : 'Gmail did not confirm delivery. Retry the saved report later.'});
+    if (!data.ok) return res.status(502).json({ok:false,error:data.code === 'AUTH' ? 'Google and Vercel connection codes do not match. Ask your manager to check both saved values.' : data.code === 'INVALID' ? 'The Gmail relay rejected the report format.' : data.code === 'QUOTA' ? 'Gmail sending limit reached. Retry this saved report later.' : data.code === 'RATE_LIMIT' ? 'Store report limit reached. Retry later or contact your manager.' : 'Gmail did not confirm delivery. Retry the saved report later.'});
     return res.status(200).json({ok:true,duplicate:!!data.duplicate});
   } catch (_) { return res.status(502).json({ok:false,error:'Email delivery not confirmed. Retry the saved report later.'}); }
   finally { clearTimeout(timer); }
