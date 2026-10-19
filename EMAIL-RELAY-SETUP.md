@@ -1,12 +1,20 @@
-# Feng Cha two-store email migration — Review
+# Feng Cha two-store email migration — Complete
 
-Prepared 2026-10-19. Owner authorized configuration, deployment and two labelled email-only tests in this chat. Local checks passed; production delivery has NOT been restored or deployed.
+Verified 2026-10-19, 6:15 PM America/Chicago. The owner authorized mail configuration, deployment and two labelled email-only tests in this chat. The updated app is live at https://fengcha-ops.vercel.app/.
 
-A standalone project is saved under the business Google account: [Feng Cha Ops Report Relay](https://script.google.com/home/projects/10ZVv7d-xnLLz8nkisE2mxw5_XCKmnEma6FHv3a8WU8rzBnZPxqvdJWe9/edit). The owner completed Google's mail authorization. Version 2 was deployed on 2026-10-19 at 6:05 PM Chicago time. The shared token is not configured yet, so requests are rejected until configuration is complete.
+## Production verification
 
-Vercel login is complete and the correct `fengcha-ops` project/production environment was verified. Both environment-variable rows are prepared in the UI; the relay URL is filled, the shared token value is blank. Google Script Properties has the `REPORT_RELAY_TOKEN` name prepared with an empty value. The owner has been asked to enter the same newly generated credential in both providers and save; no credential has been created, read, logged or written to a local file by this implementation. Browser rules require the human to enter new authentication credentials. App deployment and the two mail-only tests remain pending.
+- Google MailApp authorization completed by the owner under `fengchaspringbranch@gmail.com`; the relay uses only the send-mail scope.
+- The owner saved the matching connection credential in Google Script Properties and Vercel Production secrets. Credential values are not recorded here or in repository files.
+- App source `7099a4f3c8bb214417e7b61501a07b197b13b752` was deployed with the updated Production environment. [Verified deployment](https://vercel.com/ailearnandgrowth-7274s-projects/fengcha-ops/HzHTe74LbYKbJL3UKXpsCqG4x9RN) showed Ready / Production / Current.
+- Email-only tests for Heights and Spring Branch each returned HTTP 200 with `ok:true, duplicate:false`. The business Gmail inbox visibly contained both distinct store-labelled test reports at 6:15 PM Chicago time.
+- Retrying the identical Heights test returned HTTP 200 with `ok:true, duplicate:true`, preventing another send.
+- These verification requests did not submit inventory or modify production inventory data.
+- Local regression checks: all nine passed. Mobile and desktop mock acceptance passed, including exactly one inventory save across a failed email and subsequent email-only retry.
 
-Relay endpoint (not a credential; requests require the private token): `https://script.google.com/macros/s/AKfycbyOvgyCRmSaVfCFMzg6LpbDCOH2jVN1p_OnIqt60QAlixf46foVUlU1cYNptu-FLsaU/exec`.
+Mail evidence: `/Users/dz/.codex/visualizations/2026/10/19/01a1565e-0d47-7171-b143-61cbb779dcbe/two-store-emails-received.jpg`.
+
+[Google relay project](https://script.google.com/home/projects/10ZVv7d-xnLLz8nkisE2mxw5_XCKmnEma6FHv3a8WU8rzBnZPxqvdJWe9/edit). Relay version 2 was deployed with the owner's Google authorization. Prior mismatched-credential attempts failed safely without sending; matching configuration was verified by successful inbox delivery.
 
 ## Result
 
@@ -20,9 +28,9 @@ Relay endpoint (not a credential; requests require the private token): `https://
 
 ## Owner authorization boundary
 
-The project Operating Constitution requires explicit confirmation for deployments and account/security changes. Next actions require permission to enable a Google Apps Script mail relay under `fengchaspringbranch@gmail.com`, grant its send-mail scope, configure protected server environment values, deploy the two-store app, and send two labelled test reports to that same inbox. Do not submit fabricated inventory to production for email verification.
+The owner explicitly approved the mail relay, send-mail authorization, protected configuration, app deployment and the two labelled test reports. Google consent and credential entry were completed by the owner. Future deployments and account/security changes remain subject to the project Operating Constitution. Do not submit fabricated inventory to production for verification.
 
-## Exact setup
+## Setup reference (already completed)
 
 1. In the business Google account create a standalone Apps Script project named `Feng Cha Ops Report Relay`. Paste `google-gmail-report-relay.gs` into its editor. This is separate from the existing inventory Sheet sync script.
 2. Configure project timezone `America/Chicago`. Use only the `https://www.googleapis.com/auth/script.send_mail` OAuth scope. MailApp sends mail without reading the inbox. Authorize as the business account.
